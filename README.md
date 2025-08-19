@@ -99,6 +99,4 @@ hotfix/* → main → develop (retro-merge)
 - Requiere al menos una aprobación
 - Todos los checks deben pasar
 
-## Licencia
 
-Define la licencia del proyecto aquí (MIT/Propietario/etc.).
