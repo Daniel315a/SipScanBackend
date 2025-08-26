@@ -23,6 +23,7 @@ class ReceiptCreated(BaseModel):
     s3_key: str
     mime_type: str | None = None
     size_bytes: int | None = None
+    extracted_text: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 class ReceiptRead(BaseModel):

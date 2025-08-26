@@ -33,6 +33,12 @@ class Receipt(Base):
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     textract_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
+    # --- OCR error tracking
+    ocr_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ocr_error_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ocr_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ocr_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     status_id: Mapped[int] = mapped_column(ForeignKey("receipt_statuses.id"), nullable=False)
     status: Mapped[ReceiptStatus] = relationship(lazy="joined")
 
