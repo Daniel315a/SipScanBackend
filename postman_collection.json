@@ -1,0 +1,185 @@
+{
+  "info": {
+    "name": "SIPScan Backend - Postman",
+    "_postman_id": "d0c7c2b0-0000-0000-0000-sipscan",
+    "description": "Postman collection for SIPScan Backend. Includes health, metadata, and receipts endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "health"
+          ]
+        },
+        "description": "Simple liveness probe."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Verify 200 and status == ok",
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Body status is ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Metadata - List Receipt Statuses",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/metadata/receipt-statuses",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "metadata",
+            "receipt-statuses"
+          ]
+        },
+        "description": "Returns active receipt statuses (uploaded, processed, failed)."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Returns a non-empty array', function () { pm.expect(pm.response.json().length).to.be.above(0); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Receipts",
+      "item": [
+        {
+          "name": "Create Receipt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uploader_nit\": \"{{uploader_nit}}\",\n  \"s3_bucket\": \"{{s3_bucket}}\",\n  \"s3_key\": \"{{s3_key}}\",\n  \"image_url\": \"{{image_url}}\",\n  \"extracted_text\": \"{{extracted_text}}\",\n  \"status_code\": \"{{status_code}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/receipts",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "receipts"
+              ]
+            },
+            "description": "Creates a new receipt metadata row. The response id is saved into the environment as receipt_id."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "var json = pm.response.json();",
+                  "pm.test('Has id in response', function () { pm.expect(json).to.have.property('id'); });",
+                  "// Save receipt_id for later requests",
+                  "pm.environment.set('receipt_id', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Receipt by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/receipts/{{receipt_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "receipts",
+                "{{receipt_id}}"
+              ]
+            },
+            "description": "Gets a single receipt by its ID (set automatically after Create Receipt)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Has uploader_nit', function () { pm.expect(pm.response.json()).to.have.property('uploader_nit'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Receipts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/receipts?limit={{limit}}&offset={{offset}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "receipts"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "{{limit}}"
+                },
+                {
+                  "key": "offset",
+                  "value": "{{offset}}"
+                }
+              ]
+            },
+            "description": "Lists receipts with basic pagination."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns an array', function () { pm.expect(Array.isArray(pm.response.json())).to.be.true; });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
