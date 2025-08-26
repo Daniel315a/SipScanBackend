@@ -2,7 +2,8 @@ from uuid import UUID
 from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
-from pydantic import BaseModel, ConfigDict, AnyHttpUrl
+from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field
+from typing import cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories.db import get_session
@@ -32,6 +33,14 @@ class ReceiptRead(BaseModel):
     mime_type: str | None = None
     size_bytes: int | None = None
 
+    model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def url(self) -> AnyHttpUrl:
+        from services.s3_service import presign_url
+        return cast(AnyHttpUrl, presign_url(self.s3_bucket, self.s3_key))
+
 @router.post("", response_model=ReceiptCreated, status_code=201)
 async def create_receipt(
     uploader_nit: str = Form(..., min_length=3, max_length=30),
@@ -49,18 +58,11 @@ async def create_receipt(
 @router.get("/{receipt_id}", response_model=ReceiptRead)
 async def get_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
     rec = await receipt_service.get_receipt(session, receipt_id)
+
     if not rec:
         raise HTTPException(status_code=404, detail="Receipt not found")
-    return rec
-
-@router.get("", response_model=List[ReceiptRead])
-async def list_receipts(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    session: AsyncSession = Depends(get_session),
-):
-    recs = await receipt_service.list_receipts(session, limit=limit, offset=offset)
-    return list(recs)
+    
+    return ReceiptRead.model_validate(rec)
 
 @router.get("/by-nit/{uploader_nit}", response_model=List[ReceiptRead])
 async def list_receipts_by_nit(
@@ -71,4 +73,5 @@ async def list_receipts_by_nit(
 ):
     """List receipts filtered by uploader NIT."""
     recs = await receipt_service.list_by_nit(session, uploader_nit, limit=limit, offset=offset)
-    return list(recs)
+
+    return [ReceiptRead.model_validate(r) for r in recs]
