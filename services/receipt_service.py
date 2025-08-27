@@ -48,7 +48,7 @@ async def create_receipt_from_upload_s3(
     )
 
     try:
-        ocr = get_ocr_provider(mode="analyze_expense")
+        ocr = get_ocr_provider()
         text = await asyncio.to_thread(ocr.extract_text_from_s3, bucket=bucket, key=key)
         rec.extracted_text = text
         processed = await receipt_status_repo.get_status_by_code(session, "processed")
@@ -87,6 +87,7 @@ async def create_receipt_from_upload_s3(
         "size_bytes": size,
         "extracted_text": rec.extracted_text,
         "url": url,
+        "created_at": rec.created_at,
     }
 
 async def get_receipt(session: AsyncSession, receipt_id: UUID):

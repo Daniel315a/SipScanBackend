@@ -21,6 +21,7 @@ async def list_statuses(session: AsyncSession) -> Sequence[ReceiptStatus]:
         .order_by(ReceiptStatus.sort_order, ReceiptStatus.id)
     )
     res = await session.execute(stmt)
+
     return res.scalars().all()
 
 async def ensure_default_statuses(session: AsyncSession) -> None:

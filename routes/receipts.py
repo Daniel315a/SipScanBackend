@@ -2,9 +2,10 @@ from uuid import UUID
 from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
-from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field
+from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field, Field
 from typing import cast
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 
 from repositories.db import get_session
 from services import receipt_service
@@ -19,21 +20,21 @@ ALLOWED_IMAGE_TYPES: set[str] = {
 class ReceiptCreated(BaseModel):
     id: UUID
     uploader_nit: str
-    s3_bucket: str
-    s3_key: str
     mime_type: str | None = None
     size_bytes: int | None = None
     extracted_text: str | None = None
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 class ReceiptRead(BaseModel):
     id: UUID
+    s3_bucket: str = Field(exclude=True)
+    s3_key: str = Field(exclude=True)
     uploader_nit: str
-    s3_bucket: str
-    s3_key: str
     mime_type: str | None = None
     size_bytes: int | None = None
-
+    extracted_text: str | None = None
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
     @computed_field

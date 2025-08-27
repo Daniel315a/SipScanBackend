@@ -1,61 +1,40 @@
 {
-  "id": "d0c7c2b0-env-0000-sipscan",
-  "name": "SIPScan - Local",
-  "values": [
-    {
-      "key": "base_url",
-      "value": "http://localhost:8000",
-      "enabled": true
-    },
-    {
-      "key": "limit",
-      "value": "10",
-      "enabled": true
-    },
-    {
-      "key": "offset",
-      "value": "0",
-      "enabled": true
-    },
-    {
-      "key": "receipt_id",
-      "value": "",
-      "enabled": true,
-      "description": "Auto-filled after Create Receipt"
-    },
-    {
-      "key": "uploader_nit",
-      "value": "900123456",
-      "enabled": true
-    },
-    {
-      "key": "s3_bucket",
-      "value": "my-bucket",
-      "enabled": true
-    },
-    {
-      "key": "s3_key",
-      "value": "receipts/2025/08/img_001.jpg",
-      "enabled": true
-    },
-    {
-      "key": "image_url",
-      "value": "https://example.com/receipts/img_001.jpg",
-      "enabled": true
-    },
-    {
-      "key": "extracted_text",
-      "value": "TOTAL 25.000 IVA 19%",
-      "enabled": true
-    },
-    {
-      "key": "status_code",
-      "value": "",
-      "enabled": true,
-      "description": "Optional: uploaded|processed|failed"
-    }
-  ],
-  "_postman_variable_scope": "environment",
-  "_postman_exported_at": "2025-08-25T11:26:15.577449Z",
-  "_postman_exported_using": "SIPScan helper"
+	"id": "bd9f52d4-ff72-49d6-b723-cee7b4d4a577",
+	"name": "SIPScan (Local)",
+	"values": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"enabled": true
+		},
+		{
+			"key": "endpoint_erp",
+			"value": "https://sipsoftware.co/erp/usuarios",
+			"type": "default",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"enabled": true
+		},
+		{
+			"key": "erp_api_token",
+			"value": "",
+			"type": "default",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"enabled": true
+		},
+		{
+			"key": "receipt_id",
+			"value": "",
+			"type": "any",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2025-08-26T14:03:23.823Z",
+	"_postman_exported_using": "Postman/11.59.7"
 }
