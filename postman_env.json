@@ -1,0 +1,40 @@
+{
+	"id": "bd9f52d4-ff72-49d6-b723-cee7b4d4a577",
+	"name": "SIPScan (Local)",
+	"values": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"enabled": true
+		},
+		{
+			"key": "endpoint_erp",
+			"value": "https://sipsoftware.co/erp/usuarios",
+			"type": "default",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"enabled": true
+		},
+		{
+			"key": "erp_api_token",
+			"value": "",
+			"type": "default",
+			"description": {
+				"content": "",
+				"type": "text/plain"
+			},
+			"enabled": true
+		},
+		{
+			"key": "receipt_id",
+			"value": "",
+			"type": "any",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment",
+	"_postman_exported_at": "2025-08-26T14:03:23.823Z",
+	"_postman_exported_using": "Postman/11.59.7"
+}

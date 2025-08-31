@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Byte-compiled / logs
+*.log
+
+# Local env/config
+.env
+.env.*
+*.sqlite3
+
+# Tests & artifacts
+.coverage
+htmlcov/
+dist/
+build/

@@ -1,0 +1,307 @@
+{
+	"info": {
+		"_postman_id": "4212c5c6-a170-4d41-b446-f489f402aacf",
+		"name": "SIPScan Backend - Postman",
+		"description": "Postman collection for SIPScan Backend. Includes health, metadata, and receipts endpoints.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "7674801",
+		"_collection_link": "https://lively-capsule-647502.postman.co/workspace/SIP-Software~6a675cea-b506-4ec7-839b-1b472a3c9def/collection/7674801-4212c5c6-a170-4d41-b446-f489f402aacf?action=share&source=collection_link&creator=7674801"
+	},
+	"item": [
+		{
+			"name": "Receipts",
+			"item": [
+				{
+					"name": "Create Receipt",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+									"var json = pm.response.json();",
+									"pm.test('Has id in response', function () { pm.expect(json).to.have.property('id'); });",
+									"// Save receipt_id for later requests",
+									"pm.environment.set('receipt_id', json.id);"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "image",
+									"type": "file",
+									"src": "/home/daniel/Imágenes/Selección_103.png"
+								},
+								{
+									"key": "uploader_nit",
+									"value": "900788415-1",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/receipts",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"receipts"
+							]
+						},
+						"description": "Creates a new receipt metadata row. The response id is saved into the environment as receipt_id."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Receipt by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+									"pm.test('Has uploader_nit', function () { pm.expect(pm.response.json()).to.have.property('uploader_nit'); });"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/receipts/e77a9b67-fc71-461a-be5a-d9b8fe01581f",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"receipts",
+								"e77a9b67-fc71-461a-be5a-d9b8fe01581f"
+							]
+						},
+						"description": "Gets a single receipt by its ID (set automatically after Create Receipt)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get by NIT",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+									"pm.test('Returns an array', function () { pm.expect(Array.isArray(pm.response.json())).to.be.true; });"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/receipts/by-nit/900788415-1",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"receipts",
+								"by-nit",
+								"900788415-1"
+							]
+						},
+						"description": "Lists receipts with basic pagination."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Metadata",
+			"item": [
+				{
+					"name": "List Receipt Statuses",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+									"pm.test('Returns a non-empty array', function () { pm.expect(pm.response.json().length).to.be.above(0); });"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/metadata/receipt-statuses",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"metadata",
+								"receipt-statuses"
+							]
+						},
+						"description": "Returns active receipt statuses (uploaded, processed, failed)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Login",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var json = JSON.parse(responseBody);",
+									"postman.setEnvironmentVariable(\"erp_api_token\", json.token);"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"nombre\": \"demo\",\n    \"contrasenna\": \"84ba92cf18135aec58ed1334183761a2\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{endpoint_erp}}/login",
+							"host": [
+								"{{endpoint_erp}}"
+							],
+							"path": [
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get user by token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									""
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"auth": {
+							"type": "apikey",
+							"apikey": [
+								{
+									"key": "value",
+									"value": "{{erp_api_token}}",
+									"type": "string"
+								},
+								{
+									"key": "key",
+									"value": "X-Api-Token",
+									"type": "string"
+								},
+								{
+									"key": "in",
+									"value": "header",
+									"type": "string"
+								}
+							]
+						},
+						"method": "GET",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "{{endpoint_erp}}/usuario",
+							"host": [
+								"{{endpoint_erp}}"
+							],
+							"path": [
+								"usuario"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Health",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"// Verify 200 and status == ok",
+							"pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+							"pm.test('Body status is ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				},
+				"description": "Simple liveness probe."
+			},
+			"response": []
+		}
+	]
+}
