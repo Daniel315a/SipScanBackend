@@ -170,3 +170,22 @@ async def generate_accounting(
         rec.status_id = suggested.id
     await session.commit()
     return receipt_to_dict(rec)
+
+async def _set_status(session: AsyncSession, *, receipt_id: UUID, status_code: str) -> dict:
+    rec = await receipt_repo.get_receipt(session, receipt_id)
+    if not rec:
+        raise ValueError("Receipt not found")
+    st = await receipt_status_repo.get_status_by_code(session, status_code)
+    if not st:
+        raise RuntimeError(f"Status '{status_code}' not configured")
+
+    rec.status_id = st.id
+    await session.commit()
+    await session.refresh(rec, attribute_names=["status"])
+    return receipt_to_dict(rec)
+
+async def accept_accounting(session: AsyncSession, *, receipt_id: UUID) -> dict:
+    return await _set_status(session, receipt_id=receipt_id, status_code="accepted_accounting")
+
+async def reject_accounting(session: AsyncSession, *, receipt_id: UUID) -> dict:
+    return await _set_status(session, receipt_id=receipt_id, status_code="rejected_accounting")

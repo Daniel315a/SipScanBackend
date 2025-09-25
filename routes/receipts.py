@@ -3,7 +3,7 @@ from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field, Field
-from typing import cast, Any
+from typing import cast, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
@@ -26,6 +26,13 @@ class ReceiptCreated(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class ReceiptStatusRead(BaseModel):
+    id: int
+    code: str
+    label: str
+    is_final: bool
+    model_config = ConfigDict(from_attributes=True)
+
 class ReceiptRead(BaseModel):
     id: UUID
     s3_bucket: str = Field(exclude=True)
@@ -37,6 +44,7 @@ class ReceiptRead(BaseModel):
     accounting_json: dict[str, Any] | None = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+    status: Optional[ReceiptStatusRead] = None
 
     @computed_field
     @property
@@ -96,3 +104,22 @@ async def suggest_accounting(
         raise HTTPException(status_code=500, detail=str(e))
     except Exception:
         raise HTTPException(status_code=500, detail="Generation failed")
+
+@router.post("/{receipt_id}/accept", response_model=ReceiptRead)
+async def accept_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
+    try:
+        return await receipt_service.accept_accounting(session, receipt_id=receipt_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{receipt_id}/reject", response_model=ReceiptRead)
+async def reject_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
+    try:
+        return await receipt_service.reject_accounting(session, receipt_id=receipt_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    

@@ -2,6 +2,7 @@ from typing import Sequence
 from uuid import UUID
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from repositories.models import Receipt
 
@@ -32,12 +33,21 @@ async def create_receipt(
     return rec
 
 async def get_receipt(session: AsyncSession, receipt_id: UUID) -> Receipt | None:
-    """Fetch a single receipt by UUID or return None."""
-    return await session.get(Receipt, receipt_id)
+    stmt = (
+        select(Receipt)
+        .options(selectinload(Receipt.status))
+        .where(Receipt.id == receipt_id)
+    )
+    res = await session.execute(stmt)
+    return res.scalar_one_or_none()
 
 async def list_receipts(session: AsyncSession, limit: int = 50, offset: int = 0) -> Sequence[Receipt]:
-    """List recent receipts with basic pagination."""
-    stmt = select(Receipt).order_by(Receipt.created_at.desc()).offset(offset).limit(limit)
+    stmt = (
+        select(Receipt)
+        .options(selectinload(Receipt.status))
+        .order_by(Receipt.created_at.desc())
+        .offset(offset).limit(limit)
+    )
     res = await session.execute(stmt)
     return res.scalars().all()
 
@@ -45,6 +55,7 @@ async def list_by_nit(session: AsyncSession, uploader_nit: str, limit: int = 50,
     """List receipts filtered by uploader_nit with basic pagination."""
     stmt = (
         select(Receipt)
+        .options(selectinload(Receipt.status))
         .where(Receipt.uploader_nit == uploader_nit)
         .order_by(Receipt.created_at.desc())
         .offset(offset)
