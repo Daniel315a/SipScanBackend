@@ -7,6 +7,9 @@ DEFAULT_RECEIPT_STATUSES: list[tuple[str, str, bool, int]] = [
     ("uploaded",  "Uploaded",  False, 10),
     ("processed", "Processed", True,  20),
     ("failed",    "Failed",    True,  30),
+    ("suggested",  "Suggested",  False, 40),
+    ("accepted_accounting", "Accepted accounting", False, 50),
+    ("rejected_accounting", "Rejected accounting", False, 60),
 ]
 
 async def get_status_by_code(session: AsyncSession, code: str) -> ReceiptStatus | None:

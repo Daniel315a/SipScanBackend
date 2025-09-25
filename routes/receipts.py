@@ -1,9 +1,9 @@
 from uuid import UUID
 from typing import List, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field, Field
-from typing import cast
+from typing import cast, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
@@ -34,6 +34,7 @@ class ReceiptRead(BaseModel):
     mime_type: str | None = None
     size_bytes: int | None = None
     extracted_text: str | None = None
+    accounting_json: dict[str, Any] | None = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -77,3 +78,21 @@ async def list_receipts_by_nit(
     recs = await receipt_service.list_by_nit(session, uploader_nit, limit=limit, offset=offset)
 
     return [ReceiptRead.model_validate(r) for r in recs]
+
+@router.post("/{receipt_id}/suggest", response_model=ReceiptRead)
+async def suggest_accounting(
+    receipt_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        rec_dict = await receipt_service.generate_accounting(
+            session, app=request.app, receipt_id=receipt_id
+        )
+        return rec_dict
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Generation failed")

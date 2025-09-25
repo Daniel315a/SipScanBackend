@@ -4,6 +4,7 @@ from uuid import uuid4, UUID
 
 from sqlalchemy import String, Text, DateTime, func, ForeignKey, Boolean, SmallInteger, BigInteger
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from repositories.db import Base
@@ -32,6 +33,9 @@ class Receipt(Base):
 
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     textract_job_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # --- Accounting
+    accounting_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  
 
     # --- OCR error tracking
     ocr_error: Mapped[str | None] = mapped_column(Text, nullable=True)

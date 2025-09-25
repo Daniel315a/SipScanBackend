@@ -1,6 +1,6 @@
 from typing import Sequence
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories.models import Receipt
