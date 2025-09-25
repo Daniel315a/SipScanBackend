@@ -12,8 +12,6 @@ from repositories.models import Receipt, ReceiptStatus  # noqa: F401
 
 app = FastAPI(title="SIPScan - Backend")
 
-os.makedirs(os.getenv("UPLOAD_DIR", "/app/uploads"), exist_ok=True)
-
 @app.get("/health")
 async def health():
     # Simple liveness probe; DB ping is handled elsewhere if needed
