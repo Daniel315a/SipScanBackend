@@ -1,9 +1,9 @@
 from uuid import UUID
 from typing import List, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field, Field
-from typing import cast
+from typing import cast, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 
@@ -26,6 +26,13 @@ class ReceiptCreated(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class ReceiptStatusRead(BaseModel):
+    id: int
+    code: str
+    label: str
+    is_final: bool
+    model_config = ConfigDict(from_attributes=True)
+
 class ReceiptRead(BaseModel):
     id: UUID
     s3_bucket: str = Field(exclude=True)
@@ -34,8 +41,10 @@ class ReceiptRead(BaseModel):
     mime_type: str | None = None
     size_bytes: int | None = None
     extracted_text: str | None = None
+    accounting_json: dict[str, Any] | None = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+    status: Optional[ReceiptStatusRead] = None
 
     @computed_field
     @property
@@ -77,3 +86,40 @@ async def list_receipts_by_nit(
     recs = await receipt_service.list_by_nit(session, uploader_nit, limit=limit, offset=offset)
 
     return [ReceiptRead.model_validate(r) for r in recs]
+
+@router.post("/{receipt_id}/suggest", response_model=ReceiptRead)
+async def suggest_accounting(
+    receipt_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    try:
+        rec_dict = await receipt_service.generate_accounting(
+            session, app=request.app, receipt_id=receipt_id
+        )
+        return rec_dict
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=500, detail="Generation failed")
+
+@router.post("/{receipt_id}/accept", response_model=ReceiptRead)
+async def accept_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
+    try:
+        return await receipt_service.accept_accounting(session, receipt_id=receipt_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{receipt_id}/reject", response_model=ReceiptRead)
+async def reject_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
+    try:
+        return await receipt_service.reject_accounting(session, receipt_id=receipt_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
