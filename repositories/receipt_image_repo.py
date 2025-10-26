@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Sequence, Optional
 from uuid import UUID
 
-from sqlalchemy import select, func, delete as sqldelete
+from sqlalchemy import select, func, delete as sqldelete, update as sqlupdate
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from repositories.models import ReceiptImage
+from datetime import datetime, timezone 
 
 # ---- Mime-type validation ----
 _ALLOWED_IMAGE_MIME_EXACT = {
@@ -128,3 +129,36 @@ async def delete_by_receipt(session: AsyncSession, receipt_id: UUID) -> int:
     res = await session.execute(stmt)
     await session.commit()
     return int(res.rowcount or 0)
+
+async def update_ocr_result(
+    session: AsyncSession,
+    *,
+    image_id: UUID,
+    extracted_text: str | None = None,
+    ocr_error: str | None = None,
+    ocr_error_type: str | None = None,
+    ocr_error_code: str | None = None,
+    ocr_error_at: datetime | None = None,
+) -> None:
+    """
+    Update the OCR fields for a specific image.
+    - On success: pass extracted_text and leave errors as None.
+    - On error: pass ocr_error (+type/+code) and optionally extracted_text=None.
+
+    """
+    values: dict = {
+        "extracted_text": extracted_text,
+        "ocr_error": ocr_error,
+        "ocr_error_type": ocr_error_type,
+        "ocr_error_code": ocr_error_code,
+        "ocr_error_at": ocr_error_at,
+    }
+
+    stmt = (
+        sqlupdate(ReceiptImage)
+        .where(ReceiptImage.id == image_id)
+        .values(**values)
+    )
+
+    await session.execute(stmt)
+    await session.commit()

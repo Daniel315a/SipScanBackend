@@ -3,9 +3,14 @@ from __future__ import annotations
 from typing import List, Dict, Any
 from uuid import UUID
 from fastapi import UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from datetime import datetime, timezone 
+import asyncio
+
 from repositories import receipt_image_repo
+from repositories import receipt_repo
 from services.s3_service import upload_image, presign_url
+from services.ocr_service import get_ocr_provider
 
 def _safe_filesize(upload: UploadFile) -> int | None:
     """
@@ -93,3 +98,98 @@ async def get_first(session: AsyncSession, *, receipt_id: UUID) -> Dict[str, Any
         "size_bytes": img.size_bytes,
         "url": presign_url(img.s3_bucket, img.s3_key),
     }
+
+async def ocr_images_to_resources(
+    session: AsyncSession,
+    *,
+    receipt_id: UUID,
+) -> List[Dict[str, Any]]:
+    """
+    Iterate over the receipt images (ordered by img_number), send each one to Textract,
+    and UPDATE the ReceiptImage row:
+    - Success -> extracted_text
+    - Error   -> ocr_error, ocr_error_type, ocr_error_code, ocr_error_at (UTC)
+    Return a per-image summary.
+    """
+
+    images = await receipt_image_repo.get_by_receipt(session, receipt_id)
+    if not images:
+        return []
+
+    provider = get_ocr_provider()
+    loop = asyncio.get_running_loop()
+
+    results: List[Dict[str, Any]] = []
+
+    for img in images:
+        bucket = img.s3_bucket
+        key = img.s3_key
+        image_id = img.id
+
+        text: str | None = None
+        err_msg: str | None = None
+        err_type: str | None = None
+        err_code: str | None = None
+
+        try:
+            text = await loop.run_in_executor(
+                None, lambda: provider.extract_text_from_s3(bucket=bucket, key=key)
+            )
+            
+            await receipt_image_repo.update_ocr_result(
+                session,
+                image_id=image_id,
+                extracted_text=text or "",
+                ocr_error=None,
+                ocr_error_type=None,
+                ocr_error_code=None,
+                ocr_error_at=None,
+            )
+            results.append(
+                {
+                    "image_id": str(image_id),
+                    "ok": True,
+                    "text_bytes": len((text or "").encode("utf-8")),
+                }
+            )
+
+        except Exception as e:
+            err_msg = str(e)
+            err_type = type(e).__name__
+
+            try:
+                err_code = getattr(e, "response", {}).get("Error", {}).get("Code")
+            except Exception:
+                err_code = None
+
+            await receipt_image_repo.update_ocr_result(
+                session,
+                image_id=image_id,
+                extracted_text=None,
+                ocr_error=err_msg,
+                ocr_error_type=err_type,
+                ocr_error_code=err_code,
+                ocr_error_at=datetime.now(timezone.utc),
+            )
+
+            results.append(
+                {
+                    "image_id": str(image_id),
+                    "ok": False,
+                    "error": err_msg,
+                    "error_type": err_type,
+                    **({"error_code": err_code} if err_code else {}),
+                }
+            )
+
+    await receipt_repo.update_status(session, receipt_id=receipt_id, status_code="extracted_text")
+
+    return results
+
+async def run_ocr_for_receipt(
+    session_factory: "async_sessionmaker[AsyncSession]",
+    *,
+    receipt_id: UUID,
+) -> None:
+    async with session_factory() as session:
+        await ocr_images_to_resources(session, receipt_id=receipt_id)

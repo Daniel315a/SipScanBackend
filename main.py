@@ -5,7 +5,7 @@ from routes.metadata import router as metadata_router
 from services.auth_service import validate_token
 from services.llm_service import LLMService, render_template
 
-from repositories.db import engine, Base, SessionLocal
+from repositories.db import engine, Base, session_factory
 from repositories.receipt_status_repo import ensure_default_statuses  # <- match filename
 
 # Ensure models are registered before create_all
@@ -30,5 +30,5 @@ async def on_startup() -> None:
     """Create tables and seed default metadata (dev only)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    async with SessionLocal() as session:
+    async with session_factory() as session:
         await ensure_default_statuses(session)

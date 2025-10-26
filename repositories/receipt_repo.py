@@ -2,7 +2,7 @@
 from typing import Sequence
 from uuid import UUID
 
-from sqlalchemy import select, delete as sqldelete
+from sqlalchemy import select, delete as sqldelete, update as sqlupdate
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -10,6 +10,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from repositories.models import Receipt
 from repositories import receipt_image_repo
+from repositories import receipt_status_repo
 
 async def create_receipt(
     session: AsyncSession,
@@ -75,3 +76,25 @@ async def delete_receipt(session: AsyncSession, receipt_id: UUID) -> bool:
     res = await session.execute(stmt)
     await session.commit()
     return (res.rowcount or 0) > 0
+
+async def update_status(
+    session: AsyncSession,
+    *,
+    receipt_id: UUID,
+    status_code: str,
+) -> None:
+    """
+    Updates the receipt's status (status_id) based on the given status_code.
+    Throws a ValueError if the code doesn't exist.
+    """
+    status = await receipt_status_repo.get_status_by_code(session, status_code)
+    if not status:
+        raise ValueError(f"Unknown status code: {status_code}")
+
+    stmt = (
+        sqlupdate(Receipt)
+        .where(Receipt.id == receipt_id)
+        .values(status_id=status.id)
+    )
+    await session.execute(stmt)
+    await session.commit()

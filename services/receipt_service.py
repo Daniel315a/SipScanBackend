@@ -8,13 +8,11 @@ import re
 from uuid import UUID
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone
 from typing import List
 
 from repositories import receipt_repo
 from repositories import receipt_status_repo
-from services.s3_service import upload_image, presign_url
-from services.ocr_service import get_ocr_provider
+from services.s3_service import presign_url
 from services.llm_service import LLMService, render_template
 from services.erp_service import erp_service
 from services.receipt_image_service import create_images, get_images, get_first
@@ -59,15 +57,19 @@ async def create(
         accounting_json=None,
     )
 
+    rec_id = rec.id
+
     created_images = await create_images(
         session,
         uploader_nit=uploader_nit,
-        receipt_id=rec.id,
+        receipt_id=rec_id,
         images=images or [],
     )
 
+    await session.refresh(rec, attribute_names=["updated_at", "status_id"])
+
     return {
-        "id": str(rec.id),
+        "id": str(rec_id),
         "uploader_nit": rec.uploader_nit,
         "status_id": rec.status_id,
         "status": getattr(rec, "status", None).code if getattr(rec, "status", None) else None,

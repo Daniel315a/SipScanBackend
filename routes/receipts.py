@@ -5,12 +5,14 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
 from pydantic import BaseModel, ConfigDict, AnyHttpUrl, field_serializer
 from typing import Any, Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from zoneinfo import ZoneInfo
 from datetime import datetime
+import asyncio
 
-from repositories.db import get_session
+from repositories.db import get_session, get_sessionmaker
 from services import receipt_service
+from services import receipt_image_service
 
 _BOGOTA = ZoneInfo("America/Bogota")
 
@@ -74,6 +76,7 @@ async def create_receipt(
     uploader_nit: str = Form(..., min_length=3, max_length=30),
     images: List[UploadFile] = File(..., description="One or more receipt image files"),
     session: AsyncSession = Depends(get_session),
+    session_factory: "async_sessionmaker[AsyncSession]" = Depends(get_sessionmaker),  # 👈 nuevo
 ):
     """Receive multiple images via multipart and create the receipt."""
     if not images:
@@ -90,9 +93,22 @@ async def create_receipt(
             )
 
     try:
-        return await receipt_service.create(
+        result = await receipt_service.create(
             session, uploader_nit=uploader_nit, images=images
         )
+
+        await session.commit()
+
+        # Schedule OCR
+        asyncio.create_task(
+            receipt_image_service.run_ocr_for_receipt(
+                session_factory,
+                receipt_id=UUID(str(result["id"])),
+            )
+        )
+
+        return result
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
