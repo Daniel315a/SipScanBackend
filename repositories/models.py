@@ -47,6 +47,13 @@ class Receipt(TimestampMixin, Base):
     uploader_nit: Mapped[str] = mapped_column(String(30), nullable=False)
     accounting_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    summary: Mapped[str] = mapped_column(
+        String(52),
+        nullable=False,
+        default="Procesando documento",
+        server_default="Procesando documento",
+    )
+
     status_id: Mapped[int] = mapped_column(ForeignKey("receipt_statuses.id"), nullable=False)
     status: Mapped[ReceiptStatus] = relationship(lazy="joined")
 

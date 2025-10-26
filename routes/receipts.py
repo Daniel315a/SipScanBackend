@@ -45,6 +45,7 @@ class Receipt(BaseModel):
     accounting_json: Optional[dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
+    summary: str
     images: List[ReceiptImage] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -63,6 +64,7 @@ class ReceiptRead(BaseModel):
     id: UUID
     created_at: datetime
     status: Optional[ReceiptStatusRead] = None
+    summary: str = None
     url: str | None = None
     mime_type: str | None = None
     size_bytes: int | None = None
@@ -71,7 +73,7 @@ class ReceiptRead(BaseModel):
     def _to_bogota_img(self, dt: datetime, _info):
         return dt.astimezone(_BOGOTA).isoformat()
 
-@router.post("", response_model=Receipt, status_code=201)
+@router.post("", response_model=ReceiptRead, status_code=201)
 async def create_receipt(
     uploader_nit: str = Form(..., min_length=3, max_length=30),
     images: List[UploadFile] = File(..., description="One or more receipt image files"),

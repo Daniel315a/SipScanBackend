@@ -4,86 +4,16 @@
     "nombre": "gastos"
   },
   "fecha": "2023-12-21",
-  "consecutivo": "GASTOS-DS-DSP-4",
-  "descripcion": "Registro DS DSP-4 'Un doc de prueba' sin impuestos",
-  "referencias": {
-    "tipo_origen": "DS",
-    "prefijo": "DSP",
-    "numero": "4",
-    "fecha": "2023-12-21",
-    "numero_autorizacion": "18764022242662",
-    "codigo_dian": "b77325513059b9f7f1281a83f26a33aa5262922b937ba551008736029153faea32e6170d412454b08bd1995a3136fafa",
-    "enlace_imagen": "https://example.com/soporte.jpg"
-  },
+  "consecutivo": "DSP-4",
+  "descripcion": "Un resumen general del documento en máximo 52 caracteres",
   "detalle": [
     {
       "cuenta": "519595",
       "nombre": "Gastos menores / varios",
       "tercero": {
-        "id": 530,
-        "empresa": "1",
-        "relacion_empresa": {
-          "id": 2,
-          "nombre": "Cliente",
-          "es_empleado": "0"
-        },
-        "tipo_persona": {
-          "id": 1,
-          "codigo_dian": "PERSONA_NATURAL",
-          "nombre": "Persona natural"
-        },
-        "municipio": {
-          "id": 1,
-          "departamento": {
-            "id": 5,
-            "nombre": "Antioquia",
-            "codigo": "05"
-          },
-          "nombre": "MEDELL\u00cdN",
-          "codigo": "001"
-        },
-        "tipo_documento": {
-          "id": 1,
-          "codigo_dian": "CC",
-          "nombre": "C\u00e9dula de ciudadan\u00eda"
-        },
-        "actividad_economica1": null,
-        "actividad_economica2": null,
-        "regimen_fiscal": {
-          "id": 2,
-          "codigo_dian": "ORDINARIO",
-          "nombre": "Ordinario"
-        },
-        "responsabilidad_fiscal": {
-          "id": 2,
-          "codigo_dian": "NO_RESPONSABLE_DE_IVA",
-          "nombre": "No responsable de IVA"
-        },
-        "numero_documento": "32244818",
-        "digito_verificacion": null,
-        "primer_apellido": "RESTREPO",
-        "segundo_apellido": "ECHAVARRIA",
-        "primer_nombre": "DIANA",
-        "otros_nombres": "",
-        "razon_social": "DIANA RESTREPO ECHAVARRIA",
-        "nombre_comercial": "NO APLICA",
-        "calificacion": "0",
-        "habilitado": "1",
-        "contactos": [
-          {
-            "id": 405,
-            "tipo": {
-              "id": 1,
-              "nombre": "Personal"
-            },
-            "persona": "530",
-            "nombre": "DIANA",
-            "telefono": null,
-            "movil": "3137269309",
-            "email": "dianita260184@gmail.com",
-            "direccion": "CALLE 47 NUMERO 81 - 73  APTO 301"
-          }
-        ]
+        "numero_documento": "900788415",
+        "digito_verificacion": "1",
+        "nombre_o_razon_social": "SIP Software S.A.S."
       },
       "centro_costo": null,
       "descripcion": "Un doc de prueba",
@@ -94,70 +24,9 @@
       "cuenta": "220501",
       "nombre": "Proveedores nacionales",
       "tercero": {
-        "id": 530,
-        "empresa": "1",
-        "relacion_empresa": {
-          "id": 2,
-          "nombre": "Cliente",
-          "es_empleado": "0"
-        },
-        "tipo_persona": {
-          "id": 1,
-          "codigo_dian": "PERSONA_NATURAL",
-          "nombre": "Persona natural"
-        },
-        "municipio": {
-          "id": 1,
-          "departamento": {
-            "id": 5,
-            "nombre": "Antioquia",
-            "codigo": "05"
-          },
-          "nombre": "MEDELL\u00cdN",
-          "codigo": "001"
-        },
-        "tipo_documento": {
-          "id": 1,
-          "codigo_dian": "CC",
-          "nombre": "C\u00e9dula de ciudadan\u00eda"
-        },
-        "actividad_economica1": null,
-        "actividad_economica2": null,
-        "regimen_fiscal": {
-          "id": 2,
-          "codigo_dian": "ORDINARIO",
-          "nombre": "Ordinario"
-        },
-        "responsabilidad_fiscal": {
-          "id": 2,
-          "codigo_dian": "NO_RESPONSABLE_DE_IVA",
-          "nombre": "No responsable de IVA"
-        },
-        "numero_documento": "32244818",
-        "digito_verificacion": null,
-        "primer_apellido": "RESTREPO",
-        "segundo_apellido": "ECHAVARRIA",
-        "primer_nombre": "DIANA",
-        "otros_nombres": "",
-        "razon_social": "DIANA RESTREPO ECHAVARRIA",
-        "nombre_comercial": "NO APLICA",
-        "calificacion": "0",
-        "habilitado": "1",
-        "contactos": [
-          {
-            "id": 405,
-            "tipo": {
-              "id": 1,
-              "nombre": "Personal"
-            },
-            "persona": "530",
-            "nombre": "DIANA",
-            "telefono": null,
-            "movil": "3137269309",
-            "email": "dianita260184@gmail.com",
-            "direccion": "CALLE 47 NUMERO 81 - 73  APTO 301"
-          }
-        ]
+        "numero_documento": "900788415",
+        "digito_verificacion": "1",
+        "nombre_o_razon_social": "SIP Software S.A.S."
       },
       "centro_costo": null,
       "descripcion": "Por pagar DS DSP-4",
