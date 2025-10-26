@@ -1,3 +1,4 @@
+# routes/receipt.py
 from uuid import UUID
 from typing import List, Literal
 
@@ -17,13 +18,25 @@ ALLOWED_IMAGE_TYPES: set[str] = {
     "image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp", "image/tiff", "image/heic"
 }
 
-class ReceiptCreated(BaseModel):
+class ReceiptImage(BaseModel):
+    id: UUID
+    img_number: int
+    mime_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    url: AnyHttpUrl
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+class Receipt(BaseModel):
     id: UUID
     uploader_nit: str
-    mime_type: str | None = None
-    size_bytes: int | None = None
-    extracted_text: str | None = None
+    status_id: int
+    status: Optional[str] = None
+    accounting_json: Optional[dict[str, Any]] = None
     created_at: datetime
+    updated_at: datetime
+    images: List[ReceiptImage] = []
     model_config = ConfigDict(from_attributes=True)
 
 class ReceiptStatusRead(BaseModel):
@@ -35,45 +48,46 @@ class ReceiptStatusRead(BaseModel):
 
 class ReceiptRead(BaseModel):
     id: UUID
-    s3_bucket: str = Field(exclude=True)
-    s3_key: str = Field(exclude=True)
-    uploader_nit: str
+    created_at: datetime
+    status: Optional[ReceiptStatusRead] = None
+    url: str | None = None
     mime_type: str | None = None
     size_bytes: int | None = None
-    extracted_text: str | None = None
-    accounting_json: dict[str, Any] | None = None
-    created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
-    status: Optional[ReceiptStatusRead] = None
 
-    @computed_field
-    @property
-    def url(self) -> AnyHttpUrl:
-        from services.s3_service import presign_url
-        return cast(AnyHttpUrl, presign_url(self.s3_bucket, self.s3_key))
-
-@router.post("", response_model=ReceiptCreated, status_code=201)
+@router.post("", response_model=Receipt, status_code=201)
 async def create_receipt(
     uploader_nit: str = Form(..., min_length=3, max_length=30),
-    image: UploadFile = File(..., description="Receipt image file"),
+    images: List[UploadFile] = File(..., description="One or more receipt image files"),
     session: AsyncSession = Depends(get_session),
 ):
-    """Receive an image via multipart and create the receipt (local storage for now)."""
-    if image.content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported media type. Please upload a valid image.")
-            
-    return await receipt_service.create_receipt_from_upload_s3(
-        session, uploader_nit=uploader_nit, image=image
-    )
+    """Receive multiple images via multipart and create the receipt."""
+    if not images:
+        raise HTTPException(status_code=400, detail="At least one image is required.")
+    if len(images) > 10:
+        raise HTTPException(status_code=400, detail="A receipt can have at most 10 images.")
 
-@router.get("/{receipt_id}", response_model=ReceiptRead)
+    # Validate all uploaded image types
+    for idx, img in enumerate(images):
+        if img.content_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=415,
+                detail=f"Unsupported media type at index {idx}: {img.content_type}.",
+            )
+
+    try:
+        return await receipt_service.create(
+            session, uploader_nit=uploader_nit, images=images
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{receipt_id}", response_model=Receipt)
 async def get_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
     rec = await receipt_service.get_receipt(session, receipt_id)
-
     if not rec:
         raise HTTPException(status_code=404, detail="Receipt not found")
-    
-    return ReceiptRead.model_validate(rec)
+
+    return Receipt.model_validate(rec)
 
 @router.get("/by-nit/{uploader_nit}", response_model=List[ReceiptRead])
 async def list_receipts_by_nit(
