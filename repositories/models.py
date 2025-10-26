@@ -4,8 +4,8 @@ from datetime import datetime
 from uuid import uuid4, UUID
 
 from sqlalchemy import (
-    String, Text, DateTime, func, ForeignKey, Boolean, SmallInteger, BigInteger,
-    UniqueConstraint, Index
+    String, Text, DateTime, ForeignKey, Boolean, SmallInteger, BigInteger,
+    UniqueConstraint, Index, text
 )
 
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
@@ -13,6 +13,22 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from repositories.db import Base
+
+UTC_NOW_SQL = text("timezone('utc', now())")
+
+class TimestampMixin:
+    """Adds created_at / updated_at with UTC defaults at DB level."""
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=UTC_NOW_SQL,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=UTC_NOW_SQL,
+        server_onupdate=UTC_NOW_SQL,
+        nullable=False,
+    )
 
 class ReceiptStatus(Base):
     __tablename__ = "receipt_statuses"
@@ -24,8 +40,7 @@ class ReceiptStatus(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     sort_order: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0, server_default="0")
 
-
-class Receipt(Base):
+class Receipt(TimestampMixin, Base):
     __tablename__ = "receipts"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -42,10 +57,7 @@ class Receipt(Base):
         order_by="ReceiptImage.img_number",
     )
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-class ReceiptImage(Base):
+class ReceiptImage(TimestampMixin, Base):
     __tablename__ = "receipt_images"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -72,9 +84,6 @@ class ReceiptImage(Base):
     ocr_error_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ocr_error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     ocr_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         UniqueConstraint("receipt_id", "img_number", name="uq_receipt_img_number"),

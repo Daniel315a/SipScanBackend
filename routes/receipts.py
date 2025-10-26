@@ -1,15 +1,18 @@
 # routes/receipt.py
 from uuid import UUID
-from typing import List, Literal
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
-from pydantic import BaseModel, ConfigDict, AnyHttpUrl, computed_field, Field
-from typing import cast, Any, Optional
+from pydantic import BaseModel, ConfigDict, AnyHttpUrl, field_serializer
+from typing import Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from zoneinfo import ZoneInfo
 from datetime import datetime
 
 from repositories.db import get_session
 from services import receipt_service
+
+_BOGOTA = ZoneInfo("America/Bogota")
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
@@ -28,6 +31,10 @@ class ReceiptImage(BaseModel):
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+    @field_serializer("created_at", "updated_at")
+    def _to_bogota_img(self, dt: datetime, _info):
+        return dt.astimezone(_BOGOTA).isoformat()
+
 class Receipt(BaseModel):
     id: UUID
     uploader_nit: str
@@ -38,6 +45,10 @@ class Receipt(BaseModel):
     updated_at: datetime
     images: List[ReceiptImage] = []
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer("created_at", "updated_at")
+    def _to_bogota_img(self, dt: datetime, _info):
+        return dt.astimezone(_BOGOTA).isoformat()
 
 class ReceiptStatusRead(BaseModel):
     id: int
@@ -53,6 +64,10 @@ class ReceiptRead(BaseModel):
     url: str | None = None
     mime_type: str | None = None
     size_bytes: int | None = None
+
+    @field_serializer("created_at")
+    def _to_bogota_img(self, dt: datetime, _info):
+        return dt.astimezone(_BOGOTA).isoformat()
 
 @router.post("", response_model=Receipt, status_code=201)
 async def create_receipt(
