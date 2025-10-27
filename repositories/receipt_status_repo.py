@@ -6,11 +6,10 @@ from repositories.models import ReceiptStatus
 DEFAULT_RECEIPT_STATUSES: list[tuple[str, str, bool, int]] = [ 
     ("uploaded", "Uploaded", False, 10),
     ("extracted_text", "Extracted text", False, 20),
-    ("suggesting_accounting", "Suggesting accounting", False, 30),
-    ("failed", "Failed", True, 40),
-    ("suggested", "Suggested", False, 50),
-    ("accepted_accounting", "Accepted accounting", False, 60),
-    ("rejected_accounting", "Rejected accounting", False, 70), 
+    ("failed", "Failed", True, 30),
+    ("suggested", "Suggested", False, 40),
+    ("accepted_accounting", "Accepted accounting", False, 50),
+    ("rejected_accounting", "Rejected accounting", False, 60), 
 ]
 
 async def get_status_by_code(session: AsyncSession, code: str) -> ReceiptStatus | None:

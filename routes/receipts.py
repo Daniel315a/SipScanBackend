@@ -1,8 +1,12 @@
 # routes/receipt.py
+import jwt, os
 from uuid import UUID
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request
+from fastapi import (
+    APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, Request,
+    WebSocket, WebSocketDisconnect
+)
 from pydantic import BaseModel, ConfigDict, AnyHttpUrl, field_serializer
 from typing import Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -13,10 +17,38 @@ import asyncio
 from repositories.db import get_session, get_sessionmaker
 from services import receipt_service
 from services import receipt_image_service
+from repositories import receipt_repo
+from repositories import receipt_status_repo
 
 _BOGOTA = ZoneInfo("America/Bogota")
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
+
+# --- Simple WS connection manager ---
+class _WSManager:
+    def __init__(self):
+        self._clients: set[WebSocket] = set()
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self._clients.add(ws)
+
+    def disconnect(self, ws: WebSocket):
+        self._clients.discard(ws)
+
+    async def broadcast(self, message: dict):
+        to_drop = []
+        for ws in list(self._clients):
+            try:
+                await ws.send_json(message)
+            except Exception:
+                to_drop.append(ws)
+        for ws in to_drop:
+            self.disconnect(ws)
+
+ws_manager = _WSManager()
+ws_router = APIRouter(prefix="/receipts", tags=["receipts-ws"])
+SECRET = os.getenv("AUTH_SECRET", "***")
 
 # Restrict accepted content types (extend as needed)
 ALLOWED_IMAGE_TYPES: set[str] = {
@@ -78,7 +110,8 @@ async def create_receipt(
     uploader_nit: str = Form(..., min_length=3, max_length=30),
     images: List[UploadFile] = File(..., description="One or more receipt image files"),
     session: AsyncSession = Depends(get_session),
-    session_factory: "async_sessionmaker[AsyncSession]" = Depends(get_sessionmaker),  # 👈 nuevo
+    session_factory: "async_sessionmaker[AsyncSession]" = Depends(get_sessionmaker),
+    request: Request = None,
 ):
     """Receive multiple images via multipart and create the receipt."""
     if not images:
@@ -86,7 +119,6 @@ async def create_receipt(
     if len(images) > 10:
         raise HTTPException(status_code=400, detail="A receipt can have at most 10 images.")
 
-    # Validate all uploaded image types
     for idx, img in enumerate(images):
         if img.content_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(
@@ -101,13 +133,67 @@ async def create_receipt(
 
         await session.commit()
 
-        # Schedule OCR
-        asyncio.create_task(
-            receipt_image_service.run_ocr_for_receipt(
-                session_factory,
-                receipt_id=UUID(str(result["id"])),
-            )
-        )
+        receipt_id = UUID(str(result["id"]))
+
+        async def _bg_chain_ocr_then_generate():
+            try:
+                await receipt_image_service.run_ocr_for_receipt(
+                    session_factory,
+                    receipt_id=receipt_id,
+                )
+
+                async with session_factory() as bg_session:
+                    rec = await receipt_repo.get_receipt(bg_session, receipt_id)
+
+                    status_obj = None
+
+                    if getattr(rec, "status", None):
+                        status_obj = {
+                            "id": rec.status.id,
+                            "code": rec.status.code,
+                            "label": rec.status.label,
+                            "is_final": rec.status.is_final,
+                        }
+
+                    await ws_manager.broadcast({
+                        "event": "ocr_completed",
+                        "receipt_id": str(rec.id),
+                        "created_at": rec.created_at.isoformat(),
+                        "status": status_obj,
+                        "summary": rec.summary,
+                    })
+
+                async with session_factory() as bg_session:
+                    await receipt_service.generate_accounting(
+                        bg_session,
+                        app=request.app,
+                        receipt_id=receipt_id,
+                    )
+
+                    rec2 = await receipt_repo.get_receipt(bg_session, receipt_id)
+
+                    status_obj2 = None
+                    if getattr(rec2, "status", None):
+                        status_obj2 = {
+                            "id": rec2.status.id,
+                            "code": rec2.status.code,
+                            "label": rec2.status.label,
+                            "is_final": rec2.status.is_final,
+                        }
+
+                    await ws_manager.broadcast({
+                        "event": "suggestion_completed",
+                        "receipt_id": str(rec2.id),
+                        "created_at": rec2.created_at.isoformat(),
+                        "status": status_obj2,
+                        "summary": rec2.summary,
+                    })
+                    
+            except Exception as e:
+                import logging
+                logging.exception("Background OCR→generate task failed: %s", e)
+
+        asyncio.create_task(_bg_chain_ocr_then_generate())
 
         return result
 
@@ -134,24 +220,6 @@ async def list_receipts_by_nit(
 
     return [ReceiptRead.model_validate(r) for r in recs]
 
-@router.post("/{receipt_id}/suggest", response_model=ReceiptRead)
-async def suggest_accounting(
-    receipt_id: UUID,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    try:
-        rec_dict = await receipt_service.generate_accounting(
-            session, app=request.app, receipt_id=receipt_id
-        )
-        return rec_dict
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Generation failed")
-
 @router.post("/{receipt_id}/accept", response_model=ReceiptRead)
 async def accept_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
     try:
@@ -170,3 +238,20 @@ async def reject_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_s
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+@ws_router.websocket("/ws")
+async def receipts_ws(websocket: WebSocket):
+    
+    token = websocket.query_params.get("token")
+    if token:
+        try:
+            jwt.decode(token, SECRET, algorithms=["HS256"])
+        except Exception:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)

@@ -206,9 +206,10 @@ async def generate_accounting(
         rec.summary = "Contabilización sugerida"[:52]
     
     suggested = await receipt_status_repo.get_status_by_code(session, SUGGESTED_STATUS)
+
     if suggested:
         rec.status_id = suggested.id
-    await session.commit()
+    await session.commit() 
 
     return {
         "id": str(rec.id),
