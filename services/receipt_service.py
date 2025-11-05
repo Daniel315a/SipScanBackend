@@ -16,6 +16,7 @@ from repositories import receipt_image_repo
 
 DEFAULT_STATUS_CODE = "uploaded"
 SUGGESTED_STATUS = "suggested"
+FAILED_STATUS = "failed"
 _RES_DIR = os.getenv("RESOURCES_DIR", "/app/resources")
 
 async def create(
@@ -141,12 +142,11 @@ async def generate_accounting(
     example_filename: str | None = None,
 ) -> dict:
     """
-    Build the LLM prompt using:
-      - OCR texts per image (prefixed with a page header).
-      - PUC as a compact pipe-delimited CSV (via cuentas_to_pipe_csv).
-    Then call the LLM, parse the JSON, and persist the suggested accounting.
+    Build the LLM prompt, call the model, and persist results.
+    - Success path: stores parsed JSON, sets status = SUGGESTED_STATUS, summary from 'descripcion'/'description'.
+    - Failure path: sets status = FAILED_STATUS, sets summary to a short error message, and stores an error payload if available.
     """
-    
+
     rec = await receipt_repo.get_receipt(session, receipt_id)
     if not rec:
         raise ValueError("Receipt missing")
@@ -155,14 +155,12 @@ async def generate_accounting(
     if not images:
         raise ValueError("No images for this receipt")
 
-    ocr_text: List[str] = []
-
+    ocr_parts: List[str] = []
     for img in images:
         header = f"--- Image-text-{img.img_number} ---"
         body = (img.extracted_text or "").strip()
-        ocr_text.append(f"{header}\n{body}")
-
-    ocr_text = "\n\n".join(ocr_text).strip()
+        ocr_parts.append(f"{header}\n{body}")
+    ocr_text = "\n\n".join(ocr_parts).strip()
 
     example_file = example_filename or os.getenv("EXAMPLE_JSON_FILE", "comp.json")
     example_path = os.path.join(_RES_DIR, example_file)
@@ -188,43 +186,76 @@ async def generate_accounting(
         },
     )
 
-    open(os.path.join(os.getenv("RESOURCES_DIR", "/app/resources"), "debug_prompt.txt"), "w", encoding="utf-8").write(prompt)
+    try:
+        os.makedirs(_RES_DIR, exist_ok=True)
+        with open(os.path.join(_RES_DIR, "debug_prompt.txt"), "w", encoding="utf-8") as f:
+            f.write(prompt)
+    except Exception:
+        pass
 
-    reply = await LLMService().generate(prompt)
-    reply = re.sub(r"^```(?:json)?\s*|\s*```$", "", reply.strip(), flags=re.IGNORECASE | re.MULTILINE)
+    status_code_to_set = SUGGESTED_STATUS
+    summary_to_set = None
+    accounting_payload = None
 
-    open(os.path.join(os.getenv("RESOURCES_DIR", "/app/resources"), "reply.txt"), "w", encoding="utf-8").write(reply)
+    try:
+        reply = await LLMService().generate(prompt)
+        reply = re.sub(r"^```(?:json)?\s*|\s*```$", "", reply.strip(), flags=re.IGNORECASE | re.MULTILINE)
 
-    doc = json.loads(reply)
-    rec.accounting_json = doc
+        try:
+            with open(os.path.join(_RES_DIR, "reply.txt"), "w", encoding="utf-8") as f:
+                f.write(reply)
+        except Exception:
+            pass
 
-    desc = (doc.get("descripcion") or doc.get("description") or "").strip()
+        doc = json.loads(reply)
 
-    if desc:
-        rec.summary = desc[:52]
-    else:
-        rec.summary = "Contabilización sugerida"[:52]
-    
-    suggested = await receipt_status_repo.get_status_by_code(session, SUGGESTED_STATUS)
+        if isinstance(doc, dict) and doc.get("error") is True:
+            status_code_to_set = FAILED_STATUS
+            motivo = str(doc.get("motivo") or "").strip()
+            summary_to_set = (motivo or "Error en la contabilización")[:52]
+            accounting_payload = doc
+        else:
+            accounting_payload = doc
+            desc = (doc.get("descripcion") or doc.get("description") or "").strip()
+            summary_to_set = (desc or "Contabilización sugerida")[:52]
 
-    if suggested:
-        rec.status_id = suggested.id
-    await session.commit() 
+    except json.JSONDecodeError:
+        status_code_to_set = FAILED_STATUS
+        summary_to_set = "Respuesta LLM no es JSON"[:52]
+        accounting_payload = {"error": True, "motivo": "Respuesta LLM no es JSON", "raw": reply[:500] if 'reply' in locals() else None}
+    except Exception as e:
+        status_code_to_set = FAILED_STATUS
+        summary_to_set = "Fallo al invocar LLM"[:52]
+        accounting_payload = {"error": True, "motivo": "Excepción en invocación LLM", "detalle": str(e)[:500]}
+
+    rec.accounting_json = accounting_payload
+    rec.summary = summary_to_set or "Procesando documento"
+
+    status_obj = await receipt_status_repo.get_status_by_code(session, status_code_to_set)
+    if status_obj:
+        rec.status_id = status_obj.id
+
+    await session.commit()
+    await session.refresh(rec, attribute_names=["status", "updated_at", "summary"])
+
+    status_dict = None
+    if getattr(rec, "status", None):
+        status_dict = {
+            "id": rec.status.id,
+            "code": rec.status.code,
+            "label": rec.status.label,
+            "is_final": rec.status.is_final,
+        }
 
     return {
         "id": str(rec.id),
-        "uploader_nit": rec.uploader_nit,
-        "s3_bucket": getattr(rec, "s3_bucket", None),
-        "s3_key": getattr(rec, "s3_key", None),
-        "mime_type": getattr(rec, "mime_type", None),
-        "size_bytes": getattr(rec, "size_bytes", None),
-        "extracted_text": getattr(rec, "extracted_text", None),
-        "url": None,
         "created_at": rec.created_at,
+        "status": status_dict,
+        "summary": rec.summary,
         "status_id": rec.status_id,
-        "accounting_json": rec.accounting_json,
-        "summary": rec.summary
+        "accounting_json": rec.accounting_json
     }
+
 
 async def accept_accounting(session: AsyncSession, *, receipt_id: UUID) -> dict:
     return await _set_status(session, receipt_id=receipt_id, status_code="accepted_accounting")
