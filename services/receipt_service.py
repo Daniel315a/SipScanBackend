@@ -232,6 +232,37 @@ async def accept_accounting(session: AsyncSession, *, receipt_id: UUID) -> dict:
 async def reject_accounting(session: AsyncSession, *, receipt_id: UUID) -> dict:
     return await _set_status(session, receipt_id=receipt_id, status_code="rejected_accounting")
 
+async def _set_status(session: AsyncSession, *, receipt_id: UUID, status_code: str) -> dict:
+    rec = await receipt_repo.get_receipt(session, receipt_id)
+    if not rec:
+        raise ValueError("Receipt not found")
+
+    st = await receipt_status_repo.get_status_by_code(session, status_code)
+    if not st:
+        raise RuntimeError(f"Status '{status_code}' not configured")
+
+    rec.status_id = st.id
+    await session.commit()
+
+    await session.refresh(rec, attribute_names=["updated_at", "status", "summary", "created_at"])
+
+    status_obj = {
+        "id": st.id,
+        "code": st.code,
+        "label": st.label,
+        "is_final": st.is_final,
+    }
+
+    return {
+        "id": str(rec.id),
+        "created_at": rec.created_at,
+        "status": status_obj,
+        "summary": rec.summary,
+        "status_id": rec.status_id,
+        "accounting_json": rec.accounting_json,
+        "updated_at": rec.updated_at,
+    }
+
 def cuentas_to_pipe_csv(cuentas: Iterable[dict]) -> str:
     """
     Process PUC accounts into a compact pipe-delimited CSV (PUC → CSV).
