@@ -22,8 +22,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Set coverage threshold
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "COVERAGE_THRESHOLD=90" >> $GITHUB_ENV
+          else
+            echo "COVERAGE_THRESHOLD=60" >> $GITHUB_ENV
+          fi
+
       - name: Run tests
-        run: pytest
+        run: pytest --cov-fail-under=$COVERAGE_THRESHOLD
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
