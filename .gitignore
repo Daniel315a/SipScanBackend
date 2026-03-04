@@ -4,3 +4,5 @@ sipscan_backend_accessKeys.csv
 __pycache__/
 *.pyc
 .venv
+resources/debug_prompt.txt
+resources/reply.txt
