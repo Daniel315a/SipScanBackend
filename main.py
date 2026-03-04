@@ -5,6 +5,7 @@ from routes.metadata import router as metadata_router
 from services.auth_service import validate_token
 from services.llm_service import LLMService, render_template
 
+from sqlalchemy import text
 from repositories.db import engine, Base, session_factory
 from repositories.receipt_status_repo import ensure_default_statuses  # <- match filename
 
@@ -30,6 +31,7 @@ app.include_router(receipts_ws_router)
 async def on_startup() -> None:
     """Create tables and seed default metadata (dev only)."""
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
         await conn.run_sync(Base.metadata.create_all)
     async with session_factory() as session:
         await ensure_default_statuses(session)
