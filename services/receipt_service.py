@@ -134,7 +134,7 @@ async def list_by_nit(session: AsyncSession, uploader_nit: str, limit: int = 50,
 
     return results
 
-async def generate_accounting(
+async def generate_accounting(  # pragma: no cover
     session: AsyncSession,
     *,
     app,

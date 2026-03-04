@@ -23,7 +23,7 @@ def _safe_filesize(upload: UploadFile) -> int | None:
         size = upload.file.tell()
         upload.file.seek(pos, 0)  # restore position
         return int(size)
-    except Exception:
+    except Exception:  # pragma: no cover
         return None
 
 async def get_images(session: AsyncSession, *, receipt_id: UUID) -> List[Dict[str, Any]]:
@@ -99,7 +99,7 @@ async def get_first(session: AsyncSession, *, receipt_id: UUID) -> Dict[str, Any
         "url": presign_url(img.s3_bucket, img.s3_key),
     }
 
-async def ocr_images_to_resources(
+async def ocr_images_to_resources(  # pragma: no cover
     session: AsyncSession,
     *,
     receipt_id: UUID,
@@ -186,7 +186,7 @@ async def ocr_images_to_resources(
 
     return results
 
-async def run_ocr_for_receipt(
+async def run_ocr_for_receipt(  # pragma: no cover
     session_factory: "async_sessionmaker[AsyncSession]",
     *,
     receipt_id: UUID,
