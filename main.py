@@ -19,7 +19,7 @@ async def health():
     try:
         ping = render_template("prompts/ping.txt", {"app": "SIPScan"})
         reply = await LLMService().generate(ping)
-        return {"status": "ok, coverage > 90", "llm_sample": "Pong for SIPScan."}
+        return {"status": "ok", "llm_sample": reply[:120]}
     except Exception as e:
         return {"status": "degraded", "error": str(e)[:200]}
 
