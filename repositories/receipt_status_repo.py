@@ -3,10 +3,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from repositories.models import ReceiptStatus
 
-DEFAULT_RECEIPT_STATUSES: list[tuple[str, str, bool, int]] = [
-    ("uploaded",  "Uploaded",  False, 10),
-    ("processed", "Processed", True,  20),
-    ("failed",    "Failed",    True,  30),
+DEFAULT_RECEIPT_STATUSES: list[tuple[str, str, bool, int]] = [ 
+    ("uploaded", "Uploaded", False, 10),
+    ("extracted_text", "Extracted text", False, 20),
+    ("failed", "Failed", True, 30),
+    ("suggested", "Suggested", False, 40),
+    ("accepted_accounting", "Accepted accounting", False, 50),
+    ("rejected_accounting", "Rejected accounting", False, 60), 
 ]
 
 async def get_status_by_code(session: AsyncSession, code: str) -> ReceiptStatus | None:
@@ -21,6 +24,7 @@ async def list_statuses(session: AsyncSession) -> Sequence[ReceiptStatus]:
         .order_by(ReceiptStatus.sort_order, ReceiptStatus.id)
     )
     res = await session.execute(stmt)
+
     return res.scalars().all()
 
 async def ensure_default_statuses(session: AsyncSession) -> None:

@@ -25,28 +25,17 @@ class TextractProvider(OCRProvider):
             resp = _textract_client().analyze_expense(
                 Document={"S3Object": {"Bucket": bucket, "Name": key}}
             )
-            lines: list[str] = []
+            txt = []
             for doc in resp.get("ExpenseDocuments", []):
-                lines.append("[Summary]")
                 for sf in doc.get("SummaryFields", []):
-                    key = (sf.get("Type", {}).get("Text")
-                           or sf.get("LabelDetection", {}).get("Text") or "").strip()
-                    val = (sf.get("ValueDetection", {}) or {}).get("Text") or ""
-                    if key or val:
-                        lines.append(f"{key}: {val}".strip(": "))
-                for grp in doc.get("LineItemGroups", []):
-                    lines.append("[Items]")
-                    for item in grp.get("LineItems", []):
-                        kv = {}
+                    if (v := sf.get("ValueDetection", {}).get("Text")):
+                        txt.append(v)
+                for li in doc.get("LineItemGroups", []):
+                    for item in li.get("LineItems", []):
                         for ef in item.get("LineItemExpenseFields", []):
-                            k = (ef.get("Type", {}).get("Text")
-                                 or ef.get("LabelDetection", {}).get("Text") or "").strip()
-                            v = (ef.get("ValueDetection", {}) or {}).get("Text") or ""
-                            if k or v:
-                                kv[k or "FIELD"] = v
-                        if kv:
-                            lines.append(", ".join(f"{k}={v}" for k, v in kv.items()))
-            return "\n".join(lines).strip()
+                            if (v := ef.get("ValueDetection", {}).get("Text")):
+                                txt.append(v)
+            return "\n".join(txt)
         else:
             resp = _textract_client().detect_document_text(
                 Document={"S3Object": {"Bucket": bucket, "Name": key}}
@@ -55,6 +44,6 @@ class TextractProvider(OCRProvider):
                      if b.get("BlockType") == "LINE" and "Text" in b]
             return "\n".join(lines)
 
-def get_ocr_provider(mode: Optional[str] = None) -> OCRProvider:
-    selected = mode or os.getenv("OCR_MODE", "detect_text")
-    return TextractProvider(mode=selected)
+def get_ocr_provider() -> OCRProvider:
+    mode = os.getenv("OCR_MODE", "detect_text")
+    return TextractProvider(mode=mode)

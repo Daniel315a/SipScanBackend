@@ -1,0 +1,42 @@
+{
+  "comprobante": {
+    "numero": 2,
+    "nombre": "gastos"
+  },
+  "fecha": "2023-12-21",
+  "consecutivo": "DSP-4",
+  "descripcion": "Un resumen general del documento en máximo 52 caracteres",
+  "detalle": [
+    {
+      "cuenta": "519595",
+      "nombre": "Gastos menores / varios",
+      "tercero": {
+        "numero_documento": "900788415",
+        "digito_verificacion": "1",
+        "nombre_o_razon_social": "SIP Software S.A.S."
+      },
+      "centro_costo": null,
+      "descripcion": "Un doc de prueba",
+      "debito": 5000.00,
+      "credito": 0.00
+    },
+    {
+      "cuenta": "220501",
+      "nombre": "Proveedores nacionales",
+      "tercero": {
+        "numero_documento": "900788415",
+        "digito_verificacion": "1",
+        "nombre_o_razon_social": "SIP Software S.A.S."
+      },
+      "centro_costo": null,
+      "descripcion": "Por pagar DS DSP-4",
+      "debito": 0.00,
+      "credito": 5000.00
+    }
+  ],
+  "totales": {
+    "debito": 5000.00,
+    "credito": 5000.00
+  },
+  "notas": "Proveedor no responsable de IVA. Sin impuestos ni retenciones para este registro."
+}
