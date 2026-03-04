@@ -9,6 +9,13 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://sipscan_user:supersecretpassword@db:5432/sipscan",
 )
 
+# Render and other platforms may provide postgres:// or postgresql:// — normalize to asyncpg dialect.
+DATABASE_URL = (
+    DATABASE_URL
+    .replace("postgresql://", "postgresql+asyncpg://", 1)
+    .replace("postgres://", "postgresql+asyncpg://", 1)
+)
+
 # Async engine for SQLAlchemy 2.x
 engine = create_async_engine(
     DATABASE_URL,
