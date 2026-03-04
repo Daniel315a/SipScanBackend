@@ -1,2 +1,6 @@
 .env
 sipscan_backend_accessKeys.csv
+.claude/
+__pycache__/
+*.pyc
+.venv
