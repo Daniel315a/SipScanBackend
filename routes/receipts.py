@@ -8,7 +8,7 @@ from fastapi import (
     WebSocket, WebSocketDisconnect
 )
 from pydantic import BaseModel, ConfigDict, AnyHttpUrl, field_serializer
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from zoneinfo import ZoneInfo
 from datetime import datetime
@@ -220,19 +220,16 @@ async def list_receipts_by_nit(
 
     return [ReceiptRead.model_validate(r) for r in recs]
 
-@router.post("/{receipt_id}/accept", response_model=ReceiptRead)
-async def accept_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
-    try:
-        return await receipt_service.accept_accounting(session, receipt_id=receipt_id)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+class ReceiptUpdate(BaseModel):
+    status: Literal["accepted", "rejected"]
 
-@router.post("/{receipt_id}/reject", response_model=ReceiptRead)
-async def reject_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_session)):
+@router.patch("/{receipt_id}", response_model=ReceiptRead)
+async def update_receipt(receipt_id: UUID, body: ReceiptUpdate, session: AsyncSession = Depends(get_session)):
     try:
-        return await receipt_service.reject_accounting(session, receipt_id=receipt_id)
+        if body.status == "accepted":
+            return await receipt_service.accept_accounting(session, receipt_id=receipt_id)
+        else:
+            return await receipt_service.reject_accounting(session, receipt_id=receipt_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
