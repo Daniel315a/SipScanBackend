@@ -127,7 +127,7 @@ async def list_by_nit(session: AsyncSession, uploader_nit: str, limit: int = 50,
             "created_at": rec.created_at,
             "status": status_dict,
             "summary": rec.summary,
-            "url": first_img.get("url"),
+            "url": first_img.get("url") if first_img else None,
             "mime_type": mime_type,
             "size_bytes": size_bytes
         })
