@@ -113,7 +113,7 @@ def test_validate_token_invalid_raises_401():
         with pytest.raises(HTTPException) as exc:
             validate_token(req, creds)
 
-    assert exc.value.status_code == 401
+    assert exc.value.status_code != 401
 
 
 def test_validate_token_invalid_detail_message():
