@@ -45,14 +45,19 @@ def _make_image(url="https://s3.example.com/img.jpg", mime_type="image/jpeg", si
 
 @pytest.mark.asyncio
 async def test_list_by_nit_empty():
-    """Returns empty list when no receipts exist for the NIT."""
+    """Returns empty items list when no receipts exist for the NIT."""
     session = AsyncMock()
 
-    with patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=[])):
+    with (
+        patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=[])),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=0)),
+    ):
         from services import receipt_service
         result = await receipt_service.list_by_nit(session, _NIT)
 
-    assert result == []
+    assert result["items"] == []
+    assert result["total_estimated"] == 0
+    assert result["next_cursor"] is None
 
 
 @pytest.mark.asyncio
@@ -65,13 +70,14 @@ async def test_list_by_nit_happy_path():
 
     with (
         patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=[rec])),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=1)),
         patch("services.receipt_service.get_first", AsyncMock(return_value=img)),
     ):
         from services import receipt_service
         result = await receipt_service.list_by_nit(session, _NIT)
 
-    assert len(result) == 1
-    item = result[0]
+    assert len(result["items"]) == 1
+    item = result["items"][0]
     assert item["id"] == "00000000-0000-0000-0000-000000000001"
     assert item["created_at"] == _NOW
     assert item["summary"] == "Factura"
@@ -81,6 +87,7 @@ async def test_list_by_nit_happy_path():
     assert item["status"] == {
         "id": 1, "code": "uploaded", "label": "Uploaded", "is_final": False
     }
+    assert result["total_estimated"] == 1
 
 
 @pytest.mark.asyncio
@@ -96,14 +103,15 @@ async def test_list_by_nit_multiple_receipts():
 
     with (
         patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=recs)),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=2)),
         patch("services.receipt_service.get_first", AsyncMock(return_value=img)),
     ):
         from services import receipt_service
         result = await receipt_service.list_by_nit(session, _NIT)
 
-    assert len(result) == 2
-    assert result[0]["summary"] == "Factura 1"
-    assert result[1]["summary"] == "Factura 2"
+    assert len(result["items"]) == 2
+    assert result["items"][0]["summary"] == "Factura 1"
+    assert result["items"][1]["summary"] == "Factura 2"
 
 
 @pytest.mark.asyncio
@@ -115,12 +123,13 @@ async def test_list_by_nit_no_status():
 
     with (
         patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=[rec])),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=1)),
         patch("services.receipt_service.get_first", AsyncMock(return_value=img)),
     ):
         from services import receipt_service
         result = await receipt_service.list_by_nit(session, _NIT)
 
-    assert result[0]["status"] is None
+    assert result["items"][0]["status"] is None
 
 
 @pytest.mark.asyncio
@@ -132,24 +141,72 @@ async def test_list_by_nit_no_image():
 
     with (
         patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=[rec])),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=1)),
         patch("services.receipt_service.get_first", AsyncMock(return_value=None)),
     ):
         from services import receipt_service
         result = await receipt_service.list_by_nit(session, _NIT)
 
-    assert result[0]["url"] is None
-    assert result[0]["mime_type"] is None
-    assert result[0]["size_bytes"] is None
+    assert result["items"][0]["url"] is None
+    assert result["items"][0]["mime_type"] is None
+    assert result["items"][0]["size_bytes"] is None
 
 
 @pytest.mark.asyncio
 async def test_list_by_nit_passes_limit_and_offset():
-    """Forwards limit and offset to the repository."""
+    """Forwards limit, offset and optional filters to the repository."""
     session = AsyncMock()
     mock_list = AsyncMock(return_value=[])
+    mock_count = AsyncMock(return_value=0)
 
-    with patch("services.receipt_service.receipt_repo.list_by_nit", mock_list):
+    with (
+        patch("services.receipt_service.receipt_repo.list_by_nit", mock_list),
+        patch("services.receipt_service.receipt_repo.count_by_nit", mock_count),
+    ):
         from services import receipt_service
         await receipt_service.list_by_nit(session, _NIT, limit=10, offset=5)
 
-    mock_list.assert_called_once_with(session, _NIT, limit=10, offset=5)
+    mock_list.assert_called_once_with(
+        session, _NIT, limit=10, offset=5, from_date=None, to_date=None, summary_filter=None
+    )
+    mock_count.assert_called_once_with(
+        session, _NIT, from_date=None, to_date=None, summary_filter=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_by_nit_next_cursor_when_full_page():
+    """next_cursor is the next offset when results fill the page."""
+    status = _make_status()
+    recs = [_make_rec(f"00000000-0000-0000-0000-00000000000{i}", status=status) for i in range(1, 3)]
+    session = AsyncMock()
+
+    with (
+        patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=recs)),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=5)),
+        patch("services.receipt_service.get_first", AsyncMock(return_value=None)),
+    ):
+        from services import receipt_service
+        result = await receipt_service.list_by_nit(session, _NIT, limit=2, offset=0)
+
+    assert result["next_cursor"] == 2
+    assert result["page_size"] == 2
+    assert result["total_estimated"] == 5
+
+
+@pytest.mark.asyncio
+async def test_list_by_nit_no_next_cursor_on_last_page():
+    """next_cursor is None when results are fewer than the page size."""
+    status = _make_status()
+    rec = _make_rec("00000000-0000-0000-0000-000000000001", status=status)
+    session = AsyncMock()
+
+    with (
+        patch("services.receipt_service.receipt_repo.list_by_nit", AsyncMock(return_value=[rec])),
+        patch("services.receipt_service.receipt_repo.count_by_nit", AsyncMock(return_value=1)),
+        patch("services.receipt_service.get_first", AsyncMock(return_value=None)),
+    ):
+        from services import receipt_service
+        result = await receipt_service.list_by_nit(session, _NIT, limit=20, offset=0)
+
+    assert result["next_cursor"] is None

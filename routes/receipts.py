@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, AnyHttpUrl, field_serializer
 from typing import Any, Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import date, datetime, time
 import asyncio
 
 from repositories.db import get_session, get_sessionmaker
@@ -104,6 +104,14 @@ class ReceiptRead(BaseModel):
     @field_serializer("created_at")
     def _to_bogota_img(self, dt: datetime, _info):
         return dt.astimezone(_BOGOTA).isoformat()
+
+
+class PagedReceiptRead(BaseModel):
+    items: List[ReceiptRead]
+    page_size: int
+    next_cursor: Optional[int] = None
+    total_estimated: int
+
 
 @router.post("", response_model=ReceiptRead, status_code=201)
 async def create_receipt(
@@ -208,17 +216,32 @@ async def get_receipt(receipt_id: UUID, session: AsyncSession = Depends(get_sess
 
     return Receipt.model_validate(rec)
 
-@router.get("/by-nit/{uploader_nit}", response_model=List[ReceiptRead])
+@router.get("/by-nit/{uploader_nit}", response_model=PagedReceiptRead)
 async def list_receipts_by_nit(
     uploader_nit: str,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
+    summary: Optional[str] = Query(None),
     session: AsyncSession = Depends(get_session),
 ):
-    """List receipts filtered by uploader NIT."""
-    recs = await receipt_service.list_by_nit(session, uploader_nit, limit=limit, offset=offset)
-
-    return [ReceiptRead.model_validate(r) for r in recs]
+    """List receipts filtered by uploader NIT with optional date range and summary filters."""
+    if to_date and not from_date:
+        raise HTTPException(status_code=400, detail="to_date requires from_date.")
+    effective_from = datetime.combine(from_date, time.min) if from_date else None
+    effective_to = datetime.combine(to_date, time(23, 59, 59)) if to_date else None
+    result = await receipt_service.list_by_nit(
+        session, uploader_nit,
+        limit=limit, offset=offset,
+        from_date=effective_from, to_date=effective_to, summary_filter=summary,
+    )
+    return PagedReceiptRead(
+        items=[ReceiptRead.model_validate(r) for r in result["items"]],
+        page_size=result["page_size"],
+        next_cursor=result["next_cursor"],
+        total_estimated=result["total_estimated"],
+    )
 
 class ReceiptUpdate(BaseModel):
     status: Literal["accepted", "rejected"]

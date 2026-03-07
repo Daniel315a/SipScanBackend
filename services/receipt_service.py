@@ -96,23 +96,36 @@ async def get_receipt(session: AsyncSession, receipt_id: UUID):
         "images": images
     }
 
-async def list_by_nit(session: AsyncSession, uploader_nit: str, limit: int = 50, offset: int = 0):
+async def list_by_nit(
+    session: AsyncSession,
+    uploader_nit: str,
+    limit: int = 20,
+    offset: int = 0,
+    from_date=None,
+    to_date=None,
+    summary_filter=None,
+):
     """
     List receipts by uploader_nit including the primary image (lowest img_number).
-    The returned dicts match ReceiptRead: inject s3_bucket/s3_key from the first image.
+    Returns a paginated dict: { items, page_size, next_cursor, total_estimated }.
     """
-    recs = await receipt_repo.list_by_nit(session, uploader_nit, limit=limit, offset=offset)
+    recs = await receipt_repo.list_by_nit(
+        session, uploader_nit,
+        limit=limit, offset=offset,
+        from_date=from_date, to_date=to_date, summary_filter=summary_filter,
+    )
+    total = await receipt_repo.count_by_nit(
+        session, uploader_nit,
+        from_date=from_date, to_date=to_date, summary_filter=summary_filter,
+    )
 
     results = []
     for rec in recs:
         first_img = await get_first(session, receipt_id=rec.id)
 
-        print(first_img)
-
         mime_type = first_img.get("mime_type") if first_img else None
         size_bytes = first_img.get("size_bytes") if first_img else None
 
-        # Build status dict for ReceiptStatusRead
         status_dict = None
         if getattr(rec, "status", None):
             status_dict = {
@@ -129,10 +142,17 @@ async def list_by_nit(session: AsyncSession, uploader_nit: str, limit: int = 50,
             "summary": rec.summary,
             "url": first_img.get("url") if first_img else None,
             "mime_type": mime_type,
-            "size_bytes": size_bytes
+            "size_bytes": size_bytes,
         })
 
-    return results
+    next_cursor = (offset + limit) if len(recs) == limit else None
+
+    return {
+        "items": results,
+        "page_size": limit,
+        "next_cursor": next_cursor,
+        "total_estimated": total,
+    }
 
 async def generate_accounting(  # pragma: no cover
     session: AsyncSession,
@@ -255,7 +275,6 @@ async def generate_accounting(  # pragma: no cover
         "status_id": rec.status_id,
         "accounting_json": rec.accounting_json
     }
-
 
 async def accept_accounting(session: AsyncSession, *, receipt_id: UUID) -> dict:
     return await _set_status(session, receipt_id=receipt_id, status_code="accepted_accounting")
