@@ -1,5 +1,6 @@
 # routes/receipt.py
 import jwt, os
+from services.auth_service import _decode_and_check_expiry
 from uuid import UUID
 from typing import List
 
@@ -27,18 +28,20 @@ router = APIRouter(prefix="/receipts", tags=["receipts"])
 # --- Simple WS connection manager ---
 class _WSManager:
     def __init__(self):
-        self._clients: set[WebSocket] = set()
+        self._clients: dict[WebSocket, str] = {}  # ws -> nit
 
-    async def connect(self, ws: WebSocket):
+    async def connect(self, ws: WebSocket, nit: str):
         await ws.accept()
-        self._clients.add(ws)
+        self._clients[ws] = nit
 
     def disconnect(self, ws: WebSocket):
-        self._clients.discard(ws)
+        self._clients.pop(ws, None)
 
-    async def broadcast(self, message: dict):
+    async def broadcast(self, nit: str, message: dict):
         to_drop = []
-        for ws in list(self._clients):
+        for ws, ws_nit in list(self._clients.items()):
+            if ws_nit != nit:
+                continue
             try:
                 await ws.send_json(message)
             except Exception:
@@ -48,8 +51,6 @@ class _WSManager:
 
 ws_manager = _WSManager()
 ws_router = APIRouter(prefix="/receipts", tags=["receipts-ws"])
-SECRET = os.getenv("AUTH_SECRET", "***")
-
 # Restrict accepted content types (extend as needed)
 ALLOWED_IMAGE_TYPES: set[str] = {
     "image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp", "image/tiff", "image/heic"
@@ -163,7 +164,7 @@ async def create_receipt(
                             "is_final": rec.status.is_final,
                         }
 
-                    await ws_manager.broadcast({
+                    await ws_manager.broadcast(uploader_nit, {
                         "event": "ocr_completed",
                         "receipt_id": str(rec.id),
                         "created_at": rec.created_at.isoformat(),
@@ -189,7 +190,7 @@ async def create_receipt(
                             "is_final": rec2.status.is_final,
                         }
 
-                    await ws_manager.broadcast({
+                    await ws_manager.broadcast(uploader_nit, {
                         "event": "suggestion_completed",
                         "receipt_id": str(rec2.id),
                         "created_at": rec2.created_at.isoformat(),
@@ -260,16 +261,22 @@ async def update_receipt(receipt_id: UUID, body: ReceiptUpdate, session: AsyncSe
     
 @ws_router.websocket("/ws")
 async def receipts_ws(websocket: WebSocket):
-    
-    token = websocket.query_params.get("token")
-    if token:
-        try:
-            jwt.decode(token, SECRET, algorithms=["HS256"])
-        except Exception:
-            await websocket.close(code=1008, reason="Invalid token")
-            return
+    nit = websocket.query_params.get("nit")
+    if not nit:
+        await websocket.close(code=1008, reason="Missing nit")
+        return
 
-    await ws_manager.connect(websocket)
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="Missing token")
+        return
+    try:
+        _decode_and_check_expiry(token)
+    except Exception:
+        await websocket.close(code=1008, reason="Invalid or expired token")
+        return
+
+    await ws_manager.connect(websocket, nit)
     try:
         while True:
             await websocket.receive_text()

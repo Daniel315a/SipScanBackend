@@ -1,7 +1,7 @@
 # repositories/receipt_repo.py
 from typing import Optional, Sequence
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import func, select, delete as sqldelete, update as sqlupdate
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,6 +115,30 @@ async def delete_receipt(session: AsyncSession, receipt_id: UUID) -> bool:
     res = await session.execute(stmt)
     await session.commit()
     return (res.rowcount or 0) > 0
+
+async def mark_stuck_as_failed(
+    session: AsyncSession,
+    *,
+    stuck_status_code: str = "extracted_text",
+    timeout_minutes: int = 15,
+) -> int:
+    """Bulk-update receipts stuck in `stuck_status_code` for more than `timeout_minutes`
+    to 'failed' with summary 'Error al procesar'. Returns the number of updated rows."""
+    failed_status = await receipt_status_repo.get_status_by_code(session, "failed")
+    stuck_status = await receipt_status_repo.get_status_by_code(session, stuck_status_code)
+    if not failed_status or not stuck_status:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    stmt = (
+        sqlupdate(Receipt)
+        .where(Receipt.status_id == stuck_status.id, Receipt.updated_at < cutoff)
+        .values(status_id=failed_status.id, summary="Error al procesar")
+    )
+    res = await session.execute(stmt)
+    await session.commit()
+    return res.rowcount or 0
+
 
 async def update_status(
     session: AsyncSession,
