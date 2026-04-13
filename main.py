@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI, Depends
 from routes.receipts import router as receipts_router, ws_router as receipts_ws_router
 from routes.metadata import router as metadata_router
+from routes.v2.receipts import router as receipts_v2_router
 from services.auth_service import validate_token
 from services.llm_service import LLMService, render_template
 
@@ -48,6 +49,7 @@ async def health():
 app.include_router(receipts_router, dependencies=[Depends(validate_token)])
 app.include_router(metadata_router, dependencies=[Depends(validate_token)])
 app.include_router(receipts_ws_router)
+app.include_router(receipts_v2_router, prefix="/v2", dependencies=[Depends(validate_token)])
 
 @app.on_event("startup")
 async def on_startup() -> None:

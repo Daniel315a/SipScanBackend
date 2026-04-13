@@ -106,13 +106,18 @@ class ReceiptRead(BaseModel):
     def _to_bogota_img(self, dt: datetime, _info):
         return dt.astimezone(_BOGOTA).isoformat()
 
-
 class PagedReceiptRead(BaseModel):
     items: List[ReceiptRead]
     page_size: int
     next_cursor: Optional[int] = None
     total_estimated: int
 
+class ReceiptUpdate(BaseModel):
+    status: Literal["accepted", "rejected"]
+
+class ReceiptFromTextInput(BaseModel):
+    uploader_nit: str
+    text: str
 
 @router.post("", response_model=ReceiptRead, status_code=201)
 async def create_receipt(
@@ -243,9 +248,6 @@ async def list_receipts_by_nit(
         next_cursor=result["next_cursor"],
         total_estimated=result["total_estimated"],
     )
-
-class ReceiptUpdate(BaseModel):
-    status: Literal["accepted", "rejected"]
 
 @router.patch("/{receipt_id}", response_model=ReceiptRead)
 async def update_receipt(receipt_id: UUID, body: ReceiptUpdate, session: AsyncSession = Depends(get_session)):

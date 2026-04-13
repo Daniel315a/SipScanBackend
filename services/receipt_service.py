@@ -154,15 +154,57 @@ async def list_by_nit(
         "total_estimated": total,
     }
 
+async def create_from_text(
+    session: AsyncSession,
+    *,
+    uploader_nit: str,
+) -> dict:
+    """Create a receipt without images, for use with direct text input."""
+    status = await receipt_status_repo.get_status_by_code(session, DEFAULT_STATUS_CODE)
+    if not status:
+        raise ValueError("Default status not configured")
+
+    rec = await receipt_repo.create_receipt(
+        session,
+        uploader_nit=uploader_nit,
+        status_id=status.id,
+        accounting_json=None,
+    )
+
+    await session.commit()
+    await session.refresh(rec, attribute_names=["updated_at", "status_id"])
+
+    status_obj = {
+        "id": status.id,
+        "code": status.code,
+        "label": status.label,
+        "is_final": status.is_final,
+    }
+
+    return {
+        "id": str(rec.id),
+        "created_at": rec.created_at,
+        "status": status_obj,
+        "summary": rec.summary,
+        "url": None,
+        "mime_type": None,
+        "size_bytes": None,
+        "status_id": rec.status_id,
+        "accounting_json": rec.accounting_json,
+        "updated_at": rec.updated_at,
+    }
+
 async def generate_accounting(  # pragma: no cover
     session: AsyncSession,
     *,
     app,
     receipt_id: UUID,
     example_filename: str | None = None,
+    receipt_text: str | None = None,
 ) -> dict:
     """
     Build the LLM prompt, call the model, and persist results.
+    - If receipt_text is provided, it is used directly (no image/OCR queries).
     - Success path: stores parsed JSON, sets status = SUGGESTED_STATUS, summary from 'descripcion'/'description'.
     - Failure path: sets status = FAILED_STATUS, sets summary to a short error message, and stores an error payload if available.
     """
@@ -171,16 +213,19 @@ async def generate_accounting(  # pragma: no cover
     if not rec:
         raise ValueError("Receipt missing")
 
-    images = await receipt_image_repo.get_by_receipt(session, receipt_id)
-    if not images:
-        raise ValueError("No images for this receipt")
+    if receipt_text is not None:
+        ocr_text = receipt_text
+    else:
+        images = await receipt_image_repo.get_by_receipt(session, receipt_id)
+        if not images:
+            raise ValueError("No images for this receipt")
 
-    ocr_parts: List[str] = []
-    for img in images:
-        header = f"--- Image-text-{img.img_number} ---"
-        body = (img.extracted_text or "").strip()
-        ocr_parts.append(f"{header}\n{body}")
-    ocr_text = "\n\n".join(ocr_parts).strip()
+        ocr_parts: List[str] = []
+        for img in images:
+            header = f"--- Image-text-{img.img_number} ---"
+            body = (img.extracted_text or "").strip()
+            ocr_parts.append(f"{header}\n{body}")
+        ocr_text = "\n\n".join(ocr_parts).strip()
 
     example_file = example_filename or os.getenv("EXAMPLE_JSON_FILE", "comp.json")
     example_path = os.path.join(_RES_DIR, example_file)
