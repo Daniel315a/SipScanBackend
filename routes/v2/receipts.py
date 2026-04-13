@@ -2,11 +2,13 @@ from uuid import UUID
 import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from repositories.db import get_session, get_sessionmaker
 from repositories import receipt_repo
 from services import receipt_service
+from services import pdf_service
 from routes.receipts import ReceiptFromTextInput, ReceiptRead, ws_manager
 
 router = APIRouter(prefix="/receipts", tags=["receipts-v2"])
@@ -67,3 +69,33 @@ async def create_receipt_from_text(
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{receipt_id}/pdf")
+async def get_receipt_pdf(
+    receipt_id: UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """Download an accounting PDF for the given receipt.
+
+    Returns 404 if the receipt does not exist.
+    Returns 422 if accounting_json is not yet available on the receipt.
+    """
+    receipt = await receipt_repo.get_receipt(session, receipt_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    if not receipt.accounting_json:
+        raise HTTPException(
+            status_code=422,
+            detail="El comprobante aún no tiene datos contables generados (accounting_json vacío).",
+        )
+
+    pdf_bytes = pdf_service.generate_accounting_pdf(receipt.accounting_json)
+
+    filename = f"comprobante_{receipt_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
