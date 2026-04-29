@@ -5,12 +5,15 @@
 # =============================================================================
 set -e
 
+# Moverse siempre a la raíz del proyecto (un nivel arriba de scripts/)
+cd "$(dirname "$0")/.."
+
 # Deshabilitar prompts interactivos de gcloud (survey, confirmaciones)
 export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 export CLOUDSDK_SURVEY_DISABLE=true
 
 # --- CONFIGURACIÓN (edita estos valores) ---
-GCP_PROJECT_ID="sipscan-493204"
+GCP_PROJECT_ID="sipscanback"
 GCP_REGION="us-central1"
 CLUSTER_NAME="sipscan-cluster"
 GAR_REPO_NAME="sipscan"
@@ -38,31 +41,39 @@ gcloud services enable \
 # =============================================================================
 echo ""
 echo "=== PASO 2: Creando cluster GKE ==="
-gcloud container clusters create "${CLUSTER_NAME}" \
-  --region "${GCP_REGION}" \
-  --num-nodes 1 \
-  --machine-type e2-medium \
-  --disk-size 20 \
-  --enable-autoscaling \
-  --min-nodes 1 \
-  --max-nodes 3 \
-  --workload-pool "${GCP_PROJECT_ID}.svc.id.goog" \
-  --quiet
+if gcloud container clusters describe "${CLUSTER_NAME}" --region "${GCP_REGION}" --quiet &>/dev/null; then
+  echo "Cluster ya existe, saltando creación."
+else
+  gcloud container clusters create "${CLUSTER_NAME}" \
+    --region "${GCP_REGION}" \
+    --num-nodes 1 \
+    --machine-type e2-medium \
+    --disk-size 20 \
+    --enable-autoscaling \
+    --min-nodes 1 \
+    --max-nodes 3 \
+    --workload-pool "${GCP_PROJECT_ID}.svc.id.goog" \
+    --quiet
+  echo "Cluster GKE creado."
+fi
 
 # Obtener credenciales para kubectl
 gcloud container clusters get-credentials "${CLUSTER_NAME}" --region "${GCP_REGION}"
-echo "Cluster GKE creado."
 
 # =============================================================================
 # PASO 3: Crear repositorio en Artifact Registry
 # =============================================================================
 echo ""
 echo "=== PASO 3: Creando repositorio Artifact Registry ==="
-gcloud artifacts repositories create "${GAR_REPO_NAME}" \
-  --repository-format=docker \
-  --location="${GCP_REGION}" \
-  --description="SipScan backend images" \
-  --quiet
+if gcloud artifacts repositories describe "${GAR_REPO_NAME}" --location="${GCP_REGION}" --quiet &>/dev/null; then
+  echo "Repositorio ya existe, saltando creación."
+else
+  gcloud artifacts repositories create "${GAR_REPO_NAME}" \
+    --repository-format=docker \
+    --location="${GCP_REGION}" \
+    --description="SipScan backend images" \
+    --quiet
+fi
 
 gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
 echo "Repositorio creado: ${GAR_URI}"
@@ -86,7 +97,7 @@ echo "Imagen publicada: ${GAR_URI}:${IMAGE_TAG}"
 # =============================================================================
 echo ""
 echo "=== PASO 5: Actualizando manifiestos ==="
-sed -i "s|us-central1-docker.pkg.dev/PROJECT_ID/sipscan/sipscan:latest|${GAR_URI}:${IMAGE_TAG}|g" \
+sed -i "s|us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan:IMAGE_TAG|${GAR_URI}:${IMAGE_TAG}|g" \
   k8s/deployment.yaml
 echo "Manifiesto de deployment actualizado."
 

@@ -3,6 +3,8 @@
 # Usar después del setup inicial para actualizaciones
 set -e
 
+cd "$(dirname "$0")/.."
+
 GCP_PROJECT_ID="sipscanback"
 GCP_REGION="us-central1"
 GAR_REPO_NAME="sipscan"

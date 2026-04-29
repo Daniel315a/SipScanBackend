@@ -15,7 +15,7 @@ spec:
       labels:
         app: sipscan-api
     spec:
-      serviceAccountName: sipscan-api  # Vincula el rol IAM via IRSA
+      serviceAccountName: sipscan-api
       initContainers:
         # Espera a que PostgreSQL esté listo antes de arrancar la API
         - name: wait-for-postgres
@@ -30,9 +30,7 @@ spec:
               done
       containers:
         - name: api
-          # Reemplaza con tu URI de Artifact Registry:
-          # REGION-docker.pkg.dev/PROJECT_ID/sipscan/sipscan:IMAGE_TAG
-          image: us-central1-docker.pkg.dev/sipscan-493204/sipscan/sipscan:c2eb6ef
+          image: us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan:e6d70c4
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
