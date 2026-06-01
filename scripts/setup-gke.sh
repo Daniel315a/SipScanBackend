@@ -1,89 +1,46 @@
 #!/bin/bash
 # =============================================================================
-# Setup completo: GKE + Artifact Registry + Deploy
+# Deploy inicial de la aplicación en un cluster GKE ya provisionado con Terraform.
 # Requisitos: gcloud CLI, kubectl, docker
+# La infraestructura (GKE + Artifact Registry) se gestiona en terraform/
 # =============================================================================
 set -e
 
-# Moverse siempre a la raíz del proyecto (un nivel arriba de scripts/)
 cd "$(dirname "$0")/.."
 
-# Deshabilitar prompts interactivos de gcloud (survey, confirmaciones)
 export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 export CLOUDSDK_SURVEY_DISABLE=true
 
-# --- CONFIGURACIÓN (edita estos valores) ---
 GCP_PROJECT_ID="sipscanback"
 GCP_REGION="us-central1"
 CLUSTER_NAME="sipscan-cluster"
 GAR_REPO_NAME="sipscan"
 NAMESPACE="sipscan"
-# ------------------------------------------
 
 GAR_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPO_NAME}/sipscan"
 
-echo ">>> Project: ${GCP_PROJECT_ID}"
+echo ">>> Project:           ${GCP_PROJECT_ID}"
 echo ">>> Artifact Registry: ${GAR_URI}"
+echo ""
+echo "NOTA: Este script asume que el cluster GKE y el repositorio Artifact Registry"
+echo "      ya fueron creados con Terraform (ver terraform/)."
+echo ""
 
 # =============================================================================
-# PASO 1: Configurar gcloud y habilitar APIs
+# PASO 1: Obtener credenciales del cluster
 # =============================================================================
-echo ""
-echo "=== PASO 1: Configurando GCP ==="
+echo "=== PASO 1: Configurando kubectl ==="
 gcloud config set project "${GCP_PROJECT_ID}"
-gcloud services enable \
-  container.googleapis.com \
-  artifactregistry.googleapis.com \
-  --quiet
-
-# =============================================================================
-# PASO 2: Crear cluster GKE
-# =============================================================================
-echo ""
-echo "=== PASO 2: Creando cluster GKE ==="
-if gcloud container clusters describe "${CLUSTER_NAME}" --region "${GCP_REGION}" --quiet &>/dev/null; then
-  echo "Cluster ya existe, saltando creación."
-else
-  gcloud container clusters create "${CLUSTER_NAME}" \
-    --region "${GCP_REGION}" \
-    --num-nodes 1 \
-    --machine-type e2-medium \
-    --disk-size 20 \
-    --enable-autoscaling \
-    --min-nodes 1 \
-    --max-nodes 3 \
-    --workload-pool "${GCP_PROJECT_ID}.svc.id.goog" \
-    --quiet
-  echo "Cluster GKE creado."
-fi
-
-# Obtener credenciales para kubectl
 gcloud container clusters get-credentials "${CLUSTER_NAME}" --region "${GCP_REGION}"
 
 # =============================================================================
-# PASO 3: Crear repositorio en Artifact Registry
+# PASO 2: Build y push de la imagen Docker
 # =============================================================================
 echo ""
-echo "=== PASO 3: Creando repositorio Artifact Registry ==="
-if gcloud artifacts repositories describe "${GAR_REPO_NAME}" --location="${GCP_REGION}" --quiet &>/dev/null; then
-  echo "Repositorio ya existe, saltando creación."
-else
-  gcloud artifacts repositories create "${GAR_REPO_NAME}" \
-    --repository-format=docker \
-    --location="${GCP_REGION}" \
-    --description="SipScan backend images" \
-    --quiet
-fi
+echo "=== PASO 2: Build y push de imagen Docker ==="
+IMAGE_TAG=$(git rev-parse --short HEAD)
 
 gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
-echo "Repositorio creado: ${GAR_URI}"
-
-# =============================================================================
-# PASO 4: Construir y subir imagen Docker
-# =============================================================================
-echo ""
-echo "=== PASO 4: Build y push de imagen Docker ==="
-IMAGE_TAG=$(git rev-parse --short HEAD)
 
 docker build -t "sipscan:${IMAGE_TAG}" .
 docker tag "sipscan:${IMAGE_TAG}" "${GAR_URI}:${IMAGE_TAG}"
@@ -93,26 +50,26 @@ docker push "${GAR_URI}:latest"
 echo "Imagen publicada: ${GAR_URI}:${IMAGE_TAG}"
 
 # =============================================================================
-# PASO 5: Actualizar manifiestos con valores reales
+# PASO 3: Actualizar tag de imagen en el deployment
 # =============================================================================
 echo ""
-echo "=== PASO 5: Actualizando manifiestos ==="
-sed -i "s|us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan:IMAGE_TAG|${GAR_URI}:${IMAGE_TAG}|g" \
+echo "=== PASO 3: Actualizando manifiestos ==="
+sed -i "s|us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan:.*|${GAR_URI}:${IMAGE_TAG}|g" \
   k8s/deployment.yaml
-echo "Manifiesto de deployment actualizado."
+echo "Tag de imagen actualizado a: ${IMAGE_TAG}"
 
 # =============================================================================
-# PASO 6: Instalar metrics-server (para HPA)
+# PASO 4: Instalar metrics-server (para HPA)
 # =============================================================================
 echo ""
-echo "=== PASO 6: Instalando metrics-server ==="
+echo "=== PASO 4: Instalando metrics-server ==="
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 
 # =============================================================================
-# PASO 7: Aplicar manifiestos de Kubernetes
+# PASO 5: Aplicar manifiestos de Kubernetes
 # =============================================================================
 echo ""
-echo "=== PASO 7: Aplicando manifiestos en Kubernetes ==="
+echo "=== PASO 5: Aplicando manifiestos ==="
 echo ""
 echo "AVISO: Asegúrate de haber editado k8s/secret.yaml con tus valores reales."
 echo "Presiona ENTER para continuar o Ctrl+C para cancelar."
@@ -125,15 +82,39 @@ kubectl apply -f k8s/secret.yaml
 kubectl apply -f k8s/postgres.yaml
 echo "Esperando a que PostgreSQL esté listo..."
 kubectl rollout status statefulset/postgres -n "${NAMESPACE}" --timeout=120s
+kubectl apply -f k8s/postgres-nodeport.yaml
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s/hpa.yaml
 
 # =============================================================================
-# PASO 8: Obtener IP del LoadBalancer
+# PASO 6: Desplegar stack de monitoreo (Grafana Alloy + Prometheus + Grafana)
 # =============================================================================
 echo ""
-echo "=== PASO 8: Esperando LoadBalancer (1-2 min) ==="
+echo "=== PASO 6: Desplegando stack de monitoreo ==="
+echo ""
+echo "AVISO: Asegúrate de cambiar la contraseña de Grafana en k8s/monitoring/grafana.yaml"
+echo "       (campo admin-password en el Secret grafana-secret) antes de continuar."
+echo "Presiona ENTER para continuar o Ctrl+C para cancelar."
+read -r
+
+kubectl apply -f k8s/monitoring/namespace.yaml
+kubectl apply -f k8s/monitoring/rbac.yaml
+kubectl apply -f k8s/monitoring/prometheus.yaml
+kubectl apply -f k8s/monitoring/grafana-alloy-config.yaml
+kubectl apply -f k8s/monitoring/grafana-alloy.yaml
+kubectl apply -f k8s/monitoring/grafana.yaml
+
+echo "Esperando a que Prometheus esté listo (puede tardar ~2 min mientras provisiona el disco)..."
+kubectl rollout status statefulset/prometheus -n monitoring --timeout=300s
+echo "Esperando a que Grafana esté lista..."
+kubectl rollout status deployment/grafana -n monitoring --timeout=180s
+
+# =============================================================================
+# PASO 7: Obtener IPs de los LoadBalancers
+# =============================================================================
+echo ""
+echo "=== PASO 7: Esperando LoadBalancers (1-2 min) ==="
 sleep 30
 
 for i in $(seq 1 12); do
@@ -142,10 +123,31 @@ for i in $(seq 1 12); do
   if [ -n "${IP}" ]; then
     echo ""
     echo "=== DESPLIEGUE COMPLETADO ==="
-    echo "IP pública: ${IP}"
-    echo "API:        http://${IP}/docs"
+    echo "IP pública API: ${IP}"
+    echo "API:            http://${IP}/docs"
     break
   fi
-  echo "Esperando IP... (${i}/12)"
+  echo "Esperando IP de la API... (${i}/12)"
   sleep 10
 done
+
+GRAFANA_IP=""
+for i in $(seq 1 12); do
+  GRAFANA_IP=$(kubectl get service grafana -n monitoring \
+    -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null)
+  if [ -n "${GRAFANA_IP}" ]; then
+    echo "Grafana:        http://${GRAFANA_IP} (admin / ver grafana-secret)"
+    break
+  fi
+  echo "Esperando IP de Grafana... (${i}/12)"
+  sleep 10
+done
+
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null)
+echo ""
+echo "=== ACCESO A POSTGRESQL VIA BASTION ==="
+echo "Nodo GKE (InternalIP): ${NODE_IP}"
+echo "Tunnel SSH:"
+echo "  gcloud compute ssh sipscan-bastion --tunnel-through-iap --zone=us-central1-a \\"
+echo "    -- -L 5432:${NODE_IP}:30432"
+echo "  psql -h localhost -p 5432 -U sipscan_user -d sipscan"

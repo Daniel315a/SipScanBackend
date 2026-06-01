@@ -14,6 +14,10 @@ spec:
     metadata:
       labels:
         app: sipscan-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: sipscan-api
       initContainers:
@@ -30,7 +34,7 @@ spec:
               done
       containers:
         - name: api
-          image: us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan:e6d70c4
+          image: us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan:6cfcb8e
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

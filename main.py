@@ -3,6 +3,7 @@ import logging
 import os
 
 from fastapi import FastAPI, Depends
+from prometheus_fastapi_instrumentator import Instrumentator
 from routes.receipts import router as receipts_router, ws_router as receipts_ws_router
 from routes.metadata import router as metadata_router
 from routes.v2.receipts import router as receipts_v2_router
@@ -35,6 +36,8 @@ async def _stuck_receipt_watchdog():
 
 
 app = FastAPI(title="SIPScan - Backend")
+
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
 @app.get("/health")
 async def health():
