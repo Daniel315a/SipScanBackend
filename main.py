@@ -3,10 +3,11 @@ import logging
 import os
 
 from fastapi import FastAPI, Depends
+from prometheus_fastapi_instrumentator import Instrumentator
 from routes.receipts import router as receipts_router, ws_router as receipts_ws_router
 from routes.metadata import router as metadata_router
+from routes.v2.receipts import router as receipts_v2_router
 from services.auth_service import validate_token
-from services.llm_service import LLMService, render_template
 
 from sqlalchemy import text
 from repositories.db import engine, Base, session_factory
@@ -36,18 +37,16 @@ async def _stuck_receipt_watchdog():
 
 app = FastAPI(title="SIPScan - Backend")
 
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
+
 @app.get("/health")
 async def health():
-    try:
-        ping = render_template("prompts/ping.txt", {"app": "SIPScan"})
-        reply = await LLMService().generate(ping)
-        return {"status": "ok", "llm_sample": reply[:120]}
-    except Exception as e:
-        return {"status": "degraded", "error": str(e)[:200]}
+    return {"status": "ok"}
 
 app.include_router(receipts_router, dependencies=[Depends(validate_token)])
 app.include_router(metadata_router, dependencies=[Depends(validate_token)])
 app.include_router(receipts_ws_router)
+app.include_router(receipts_v2_router, prefix="/v2", dependencies=[Depends(validate_token)])
 
 @app.on_event("startup")
 async def on_startup() -> None:
