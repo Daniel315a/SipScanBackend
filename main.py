@@ -35,13 +35,20 @@ async def _stuck_receipt_watchdog():
             logger.exception("Watchdog: error during stuck-receipt sweep.")
 
 
-app = FastAPI(title="SIPScan - Backend")
+API_VERSION = "1.0.0"
+RELEASE_DATE = "2026-04-29"
+
+app = FastAPI(title="SIPScan - Backend", version=API_VERSION)
 
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": API_VERSION,
+        "release_date": RELEASE_DATE,
+    }
 
 app.include_router(receipts_router, dependencies=[Depends(validate_token)])
 app.include_router(metadata_router, dependencies=[Depends(validate_token)])
