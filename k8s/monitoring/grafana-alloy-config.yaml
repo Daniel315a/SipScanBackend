@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alloy-config
+  namespace: monitoring
+data:
+  config.alloy: |
+    // ─── Descubrimiento de pods con anotación prometheus.io/scrape=true ────────
+
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+
+    discovery.relabel "annotated_pods" {
+      targets = discovery.kubernetes.pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_scrape"]
+        action        = "keep"
+        regex         = "true"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_annotation_prometheus_io_path"]
+        action        = "replace"
+        target_label  = "__metrics_path__"
+        regex         = "(.+)"
+      }
+
+      // Reemplaza el puerto con el especificado en la anotación
+      rule {
+        source_labels = ["__address__", "__meta_kubernetes_pod_annotation_prometheus_io_port"]
+        action        = "replace"
+        regex         = "([^:]+)(?::\\d+)?;(\\d+)"
+        replacement   = "$1:$2"
+        target_label  = "__address__"
+      }
+
+      rule {
+        action = "labelmap"
+        regex  = "__meta_kubernetes_pod_label_(.+)"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_node_name"]
+        target_label  = "node"
+      }
+    }
+
+    prometheus.scrape "pods" {
+      targets         = discovery.relabel.annotated_pods.output
+      forward_to      = [prometheus.remote_write.default.receiver]
+      scrape_interval = "30s"
+    }
+
+    // ─── Métricas de nodos Kubernetes: kubelet y cAdvisor ────────────────────
+
+    discovery.kubernetes "nodes" {
+      role = "node"
+    }
+
+    discovery.relabel "nodes" {
+      targets = discovery.kubernetes.nodes.targets
+
+      rule {
+        action = "labelmap"
+        regex  = "__meta_kubernetes_node_label_(.+)"
+      }
+
+      rule {
+        source_labels = ["__address__"]
+        action        = "replace"
+        target_label  = "__address__"
+        regex         = "([^:]+)(:\\d+)?"
+        replacement   = "$1:10250"
+      }
+    }
+
+    prometheus.scrape "kubelet" {
+      targets           = discovery.relabel.nodes.output
+      forward_to        = [prometheus.remote_write.default.receiver]
+      scheme            = "https"
+      metrics_path      = "/metrics"
+      scrape_interval   = "30s"
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+      tls_config {
+        ca_file              = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        insecure_skip_verify = true
+      }
+    }
+
+    prometheus.scrape "cadvisor" {
+      targets           = discovery.relabel.nodes.output
+      forward_to        = [prometheus.remote_write.default.receiver]
+      scheme            = "https"
+      metrics_path      = "/metrics/cadvisor"
+      scrape_interval   = "30s"
+      bearer_token_file = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+      tls_config {
+        ca_file              = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        insecure_skip_verify = true
+      }
+    }
+
+    // ─── Remote write a Prometheus ────────────────────────────────────────────
+
+    prometheus.remote_write "default" {
+      endpoint {
+        url = "http://prometheus.monitoring.svc.cluster.local:9090/api/v1/write"
+
+        queue_config {
+          max_samples_per_send = 1000
+          max_shards           = 10
+          capacity             = 2500
+        }
+      }
+    }

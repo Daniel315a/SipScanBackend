@@ -1,8 +1,9 @@
 # repositories/receipt_repo.py
-from typing import Sequence
+from typing import Optional, Sequence
 from uuid import UUID
+from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import select, delete as sqldelete, update as sqlupdate
+from sqlalchemy import func, select, delete as sqldelete, update as sqlupdate
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import set_committed_value
@@ -51,18 +52,56 @@ async def get_receipt(session: AsyncSession, receipt_id: UUID) -> Receipt | None
 
     return rec
 
-async def list_by_nit(session: AsyncSession, uploader_nit: str, limit: int = 50, offset: int = 0) -> Sequence[Receipt]:
-    """List receipts filtered by uploader_nit with basic pagination."""
+async def list_by_nit(
+    session: AsyncSession,
+    uploader_nit: str,
+    limit: int = 50,
+    offset: int = 0,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    summary_filter: Optional[str] = None,
+) -> Sequence[Receipt]:
+    """List receipts filtered by uploader_nit with pagination and optional filters."""
+    conditions = [Receipt.uploader_nit == uploader_nit]
+    if from_date:
+        conditions.append(Receipt.created_at >= from_date)
+    if to_date:
+        conditions.append(Receipt.created_at <= to_date)
+    if summary_filter:
+        conditions.append(Receipt.summary.ilike(f"%{summary_filter}%"))
+
+    order = Receipt.created_at.asc() if (from_date or to_date) else Receipt.created_at.desc()
     stmt = (
         select(Receipt)
         .options(selectinload(Receipt.status))
-        .where(Receipt.uploader_nit == uploader_nit)
-        .order_by(Receipt.created_at.desc())
+        .where(*conditions)
+        .order_by(order)
         .offset(offset)
         .limit(limit)
     )
     res = await session.execute(stmt)
     return res.scalars().all()
+
+
+async def count_by_nit(
+    session: AsyncSession,
+    uploader_nit: str,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+    summary_filter: Optional[str] = None,
+) -> int:
+    """Count receipts for a given NIT with the same optional filters as list_by_nit."""
+    conditions = [Receipt.uploader_nit == uploader_nit]
+    if from_date:
+        conditions.append(Receipt.created_at >= from_date)
+    if to_date:
+        conditions.append(Receipt.created_at <= to_date)
+    if summary_filter:
+        conditions.append(Receipt.summary.ilike(f"%{summary_filter}%"))
+
+    stmt = select(func.count()).select_from(Receipt).where(*conditions)
+    res = await session.execute(stmt)
+    return res.scalar_one()
 
 async def delete_receipt(session: AsyncSession, receipt_id: UUID) -> bool:
     """
@@ -76,6 +115,30 @@ async def delete_receipt(session: AsyncSession, receipt_id: UUID) -> bool:
     res = await session.execute(stmt)
     await session.commit()
     return (res.rowcount or 0) > 0
+
+async def mark_stuck_as_failed(
+    session: AsyncSession,
+    *,
+    stuck_status_code: str = "extracted_text",
+    timeout_minutes: int = 15,
+) -> int:
+    """Bulk-update receipts stuck in `stuck_status_code` for more than `timeout_minutes`
+    to 'failed' with summary 'Error al procesar'. Returns the number of updated rows."""
+    failed_status = await receipt_status_repo.get_status_by_code(session, "failed")
+    stuck_status = await receipt_status_repo.get_status_by_code(session, stuck_status_code)
+    if not failed_status or not stuck_status:
+        return 0
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+    stmt = (
+        sqlupdate(Receipt)
+        .where(Receipt.status_id == stuck_status.id, Receipt.updated_at < cutoff)
+        .values(status_id=failed_status.id, summary="Error al procesar")
+    )
+    res = await session.execute(stmt)
+    await session.commit()
+    return res.rowcount or 0
+
 
 async def update_status(
     session: AsyncSession,

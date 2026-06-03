@@ -26,4 +26,4 @@ ENV PORT=8000
 EXPOSE 8000
 
 ENV UVICORN_WORKERS=2
-CMD ["bash", "-lc", "uvicorn main:app --host 0.0.0.0 --port $PORT --workers $UVICORN_WORKERS --reload"]
+CMD ["bash", "-lc", "uvicorn main:app --host 0.0.0.0 --port $PORT --workers $UVICORN_WORKERS"]

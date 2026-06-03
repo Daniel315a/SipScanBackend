@@ -1,0 +1,22 @@
+# Servicio NodePort para exponer PostgreSQL a través del bastion host.
+# Acceso: SSH tunnel desde bastion → gke-node-ip:30432 → postgres pod:5432
+#
+# Uso desde local con bastion:
+#   gcloud compute ssh sipscan-bastion --tunnel-through-iap --zone=us-central1-a \
+#     -- -L 5432:<NODE_IP>:30432
+#   Luego: psql -h localhost -p 5432 -U sipscan_user -d sipscan
+#
+# Obtener NODE_IP: kubectl get nodes -o wide
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-nodeport
+  namespace: sipscan
+spec:
+  selector:
+    app: postgres
+  type: NodePort
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 30432
