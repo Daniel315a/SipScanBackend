@@ -38,6 +38,9 @@ async def _stuck_receipt_watchdog():
 API_VERSION = "1.0.0"
 RELEASE_DATE = "2026-04-29"
 
+API_V2_VERSION = "2.0.0"
+RELEASE_V2_DATE = "2026-06-03"
+
 app = FastAPI(title="SIPScan - Backend", version=API_VERSION)
 
 Instrumentator().instrument(app).expose(app, include_in_schema=False)
@@ -48,6 +51,14 @@ async def health():
         "status": "ok",
         "version": API_VERSION,
         "release_date": RELEASE_DATE,
+    }
+
+@app.get("/v2/health")
+async def health_v2():
+    return {
+        "status": "ok",
+        "version": API_V2_VERSION,
+        "release_date": RELEASE_V2_DATE,
     }
 
 app.include_router(receipts_router, dependencies=[Depends(validate_token)])
