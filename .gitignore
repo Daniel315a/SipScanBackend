@@ -6,14 +6,11 @@ __pycache__/
 .venv
 resources/debug_prompt.txt
 resources/reply.txt
-k8s/secret.yaml
 docs/
 
-# Terraform
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-terraform/*.tfstate
-terraform/*.tfstate.backup
-terraform/environments/*.secret.tfvars
-terraform/**/*.secret.tfvars
+# Infraestructura / deploy — no se versiona
+# (incluye k8s/secret.yaml con credenciales y el estado de Terraform)
+terraform/
+k8s/
+scripts/
 

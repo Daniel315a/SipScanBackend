@@ -27,3 +27,12 @@ venv/
 htmlcov/
 dist/
 build/
+
+# Infra / deploy (no debe ir dentro de la imagen de la app)
+terraform/
+k8s/
+docs/
+scripts/
+*.tfstate
+*.tfstate.*
+.terraform/
