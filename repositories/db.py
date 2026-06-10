@@ -16,10 +16,22 @@ DATABASE_URL = (
     .replace("postgres://", "postgresql+asyncpg://", 1)
 )
 
+# Límites del pool de conexiones, configurables por entorno (sin recompilar).
+# Regla de oro:  pods × UVICORN_WORKERS × (POOL_SIZE + MAX_OVERFLOW) <= Postgres max_connections
+#   Ej. 3 pods × 2 workers × (5 + 5) = 60  <  100 (max_connections por defecto).
+DB_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "5"))        # conexiones persistentes por proceso
+DB_MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "5"))  # extra temporales bajo pico
+DB_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30")) # s esperando una conexión libre antes de fallar
+DB_POOL_RECYCLE = int(os.getenv("DB_POOL_RECYCLE", "1800"))  # recicla conexiones cada 30 min
+
 # Async engine for SQLAlchemy 2.x
 engine = create_async_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
+    pool_pre_ping=True,       # descarta conexiones muertas antes de usarlas
+    pool_size=DB_POOL_SIZE,
+    max_overflow=DB_MAX_OVERFLOW,
+    pool_timeout=DB_POOL_TIMEOUT,
+    pool_recycle=DB_POOL_RECYCLE,
 )
 
 # Session factory for DI in FastAPI

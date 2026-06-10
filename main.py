@@ -37,13 +37,13 @@ async def _stuck_receipt_watchdog():
 
 app = FastAPI(title="SIPScan - Backend")
 
-VERSION = "2.1.0-canary"
+VERSION = "2.1.0"
 DEPLOY_DATE = datetime.utcnow().isoformat()
 
 @app.get("/health")
 async def health():
     return {
-        "status": "canary",
+        "status": "ok",
         "version": VERSION,
         "deploy_date": DEPLOY_DATE
     }

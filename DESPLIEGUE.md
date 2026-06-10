@@ -1,11 +1,11 @@
-# Despliegue SIPScan en GCP (canary 90/10)
+# Despliegue SIPScan en GCP
 
-Comandos útiles para **subir** y **bajar** toda la infraestructura, operarla y
-probar la distribución de tráfico entre el track **estable** (rama `main`) y el
-**canary** (rama `canary`).
+Comandos útiles para **subir** y **bajar** toda la infraestructura y operarla.
+La API se despliega como un **único track** a partir de la rama `main`.
 
-> La infraestructura (`terraform/`, `k8s/`) **no se versiona** (está en `.gitignore`).
-> En particular `k8s/secret.yaml` contiene credenciales y **no debe subirse a git**.
+> Los manifiestos de `k8s/` **sí se versionan**, salvo `k8s/secret.yaml`, que
+> contiene credenciales reales y está en `.gitignore` (**no debe subirse a git**;
+> usa `k8s/secret.example.yaml` como plantilla). `terraform/` tampoco se versiona.
 
 ## Variables del entorno
 
@@ -16,7 +16,6 @@ probar la distribución de tráfico entre el track **estable** (rama `main`) y e
 | Cluster GKE | `sipscan-cluster` |
 | Artifact Registry | `us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan` |
 | Namespace | `sipscan` |
-| Reparto canary | 10% (anotación `canary-weight` del Ingress) |
 
 ```bash
 export GAR=us-central1-docker.pkg.dev/sipscanback/sipscan/sipscan
@@ -52,28 +51,22 @@ kubectl wait --namespace ingress-nginx \
   --selector=app.kubernetes.io/component=controller --timeout=180s
 ```
 
-### 1.4 Construir y subir las imágenes (estable + canary)
+### 1.4 Construir y subir la imagen (desde main)
 ```bash
 gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-# Estable (rama main)
 git worktree add /tmp/sipscan-main main
-docker build -t $GAR:stable-$(git -C /tmp/sipscan-main rev-parse --short HEAD) -t $GAR:stable /tmp/sipscan-main
-docker push $GAR:stable --all-tags 2>/dev/null || docker push $GAR:stable
+docker build -t $GAR:$(git -C /tmp/sipscan-main rev-parse --short HEAD) -t $GAR:latest /tmp/sipscan-main
+docker push $GAR:latest --all-tags 2>/dev/null || docker push $GAR:latest
 git worktree remove /tmp/sipscan-main --force
-
-# Canary (rama actual)
-docker build -t $GAR:canary-$(git rev-parse --short HEAD) -t $GAR:canary .
-docker push $GAR:canary
 ```
-> Ajusta el tag de imagen en `k8s/deployment-stable.yaml` y `k8s/deployment-canary.yaml`.
+> Ajusta el tag de imagen en `k8s/deployment.yaml` si fijas un commit concreto.
 
 ### 1.5 Desplegar la aplicación
 ```bash
 kubectl apply -f k8s/namespace.yaml          # primero el namespace
-kubectl apply -f k8s/                         # secret, configmap, postgres, deployments, services, ingress, hpa
-kubectl rollout status deploy/sipscan-api-stable -n $NS
-kubectl rollout status deploy/sipscan-api-canary -n $NS
+kubectl apply -f k8s/                         # secret, configmap, postgres, deployment, service, ingress, hpa
+kubectl rollout status deploy/sipscan-api -n $NS
 ```
 
 ### 1.6 Obtener la IP pública
@@ -92,34 +85,32 @@ kubectl get pods,svc,ingress -n $NS
 kubectl get hpa -n $NS
 
 # Logs
-kubectl logs -n $NS deploy/sipscan-api-canary -f
-kubectl logs -n $NS deploy/sipscan-api-stable -f
+kubectl logs -n $NS deploy/sipscan-api -f
 
-# Redesplegar una nueva imagen canary
-docker build -t $GAR:canary-$(git rev-parse --short HEAD) -t $GAR:canary .
-docker push $GAR:canary-$(git rev-parse --short HEAD)
-kubectl set image deploy/sipscan-api-canary api=$GAR:canary-$(git rev-parse --short HEAD) -n $NS
-kubectl rollout status deploy/sipscan-api-canary -n $NS
+# Redesplegar una nueva imagen (desde main)
+docker build -t $GAR:$(git rev-parse --short HEAD) -t $GAR:latest .
+docker push $GAR:$(git rev-parse --short HEAD)
+docker push $GAR:latest
+kubectl set image deploy/sipscan-api api=$GAR:$(git rev-parse --short HEAD) -n $NS
+kubectl rollout status deploy/sipscan-api -n $NS
 
-# Cambiar el peso del canary (p. ej. a 25%)
-kubectl annotate ingress sipscan-api-canary -n $NS \
-  nginx.ingress.kubernetes.io/canary-weight="25" --overwrite
-
-# Promover canary a estable (cuando la versión es buena): apunta el deploy estable a la imagen canary
-kubectl set image deploy/sipscan-api-stable api=$GAR:canary -n $NS
+# Revertir al despliegue anterior si algo falla
+kubectl rollout undo deploy/sipscan-api -n $NS
 
 # Escalar manualmente
-kubectl scale deploy/sipscan-api-canary --replicas=2 -n $NS
+kubectl scale deploy/sipscan-api --replicas=3 -n $NS
 ```
 
 ---
 
-## 3. Probar la distribución de tráfico
+## 3. Comprobar el estado de la API
 
 ```bash
-python3 tools/check_split.py --ip 34.172.32.213 -n 200
+IP=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl -s http://$IP/health | jq
 ```
-Muestra el conteo y porcentaje real de respuestas servidas por STABLE vs CANARY.
+Devuelve `{"status":"ok","version":"...","deploy_date":"..."}`.
 
 ---
 
@@ -149,9 +140,10 @@ cd ..
 
 ## Notas
 
-- El reparto 90/10 lo hace **ingress-nginx por peso de petición**, no por número
-  de pods, así que el HPA puede escalar el estable sin alterar la proporción.
-- Ambos `Ingress` (`sipscan-api` y `sipscan-api-canary`) son *catch-all* (sin
-  `host`), por lo que el acceso es por la **IP** del LoadBalancer.
-- `k8s/secret.yaml` no está en git: créalo a partir de tus credenciales reales
-  antes del `kubectl apply` del paso 1.5.
+- El `Ingress` (`sipscan-api`) es *catch-all* (sin `host`), por lo que el acceso
+  es por la **IP** del LoadBalancer del controller ingress-nginx.
+- El despliegue es un **único track** desde `main`. Para introducir cambios de
+  forma gradual usa `kubectl rollout` (rolling update) y, si hace falta volver
+  atrás, `kubectl rollout undo`.
+- `k8s/secret.yaml` no está en git: créalo a partir de `k8s/secret.example.yaml`
+  con tus credenciales reales antes del `kubectl apply` del paso 1.5.
