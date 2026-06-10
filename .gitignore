@@ -9,8 +9,11 @@ resources/reply.txt
 docs/
 
 # Infraestructura / deploy — no se versiona
-# (incluye k8s/secret.yaml con credenciales y el estado de Terraform)
+# (Terraform mantiene estado y k8s/secret.yaml lleva credenciales reales)
 terraform/
-k8s/
 scripts/
+
+# k8s sí se versiona, salvo el secret con credenciales reales.
+# Usar k8s/secret.example.yaml como plantilla.
+k8s/secret.yaml
 

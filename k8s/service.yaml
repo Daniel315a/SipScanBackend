@@ -1,0 +1,15 @@
+# Service de la API — ClusterIP (el acceso externo entra por el Ingress, no por aquí).
+apiVersion: v1
+kind: Service
+metadata:
+  name: sipscan-api
+  namespace: sipscan
+spec:
+  type: ClusterIP
+  selector:
+    app: sipscan-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+      protocol: TCP

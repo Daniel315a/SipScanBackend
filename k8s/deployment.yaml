@@ -1,0 +1,74 @@
+# Deployment de la API — sirve TODO el tráfico (imagen construida desde la rama main).
+# NOTA: el selector de un Deployment es inmutable. Si vienes del esquema canary y
+# tenías "sipscan-api-stable" / "sipscan-api-canary", elimínalos una vez
+# (kubectl delete deploy sipscan-api-stable sipscan-api-canary -n sipscan) antes de
+# aplicar este, porque el selector cambió.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sipscan-api
+  namespace: sipscan
+  labels:
+    app: sipscan-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sipscan-api
+  template:
+    metadata:
+      labels:
+        app: sipscan-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: sipscan-api
+      initContainers:
+        # Espera a que PostgreSQL esté listo antes de arrancar la API
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z postgres 5432; do
+                echo "Esperando a PostgreSQL...";
+                sleep 2;
+              done
+      containers:
+        - name: api
+          # Imagen construida desde la rama main.
+          image: us-central1-docker.pkg.dev/popcorn-api-491915-s3/popcorn-api-repo/sipscan:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: sipscan-config
+            - secretRef:
+                name: sipscan-secret
+          resources:
+            requests:
+              # 150m (no 250m) para que 3 réplicas quepan en los 3 nodos e2-medium
+              # (~940m asignables/nodo, ya muy ocupados por pods de sistema).
+              cpu: "150m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3

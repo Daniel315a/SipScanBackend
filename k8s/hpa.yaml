@@ -1,0 +1,42 @@
+# HPA del Deployment de la API. Escala las réplicas según CPU/memoria.
+# Requiere metrics-server instalado en el cluster:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sipscan-api
+  namespace: sipscan
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sipscan-api
+  minReplicas: 1
+  # Tope acorde a la capacidad real del cluster (3 nodos e2-medium). Si maxReplicas
+  # supera lo que cabe, los pods sobrantes quedan Pending y bloquean el scale-down.
+  maxReplicas: 3
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120   # baja tras 2 min de carga baja (default 300)
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60             # como máximo -1 pod por minuto
+      selectPolicy: Max
+    scaleUp:
+      stabilizationWindowSeconds: 0     # sube de inmediato ante un pico
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+  metrics:
+    # Solo CPU: la CPU refleja el uso real y baja al quedar ocioso.
+    # NO usar memoria como métrica: la RSS de Python no se libera al quedar
+    # ocioso, así que su utilización se queda alta y bloquea el scale-down
+    # (el HPA escala según la métrica que pida MÁS réplicas).
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

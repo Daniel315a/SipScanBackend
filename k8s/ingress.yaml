@@ -1,0 +1,28 @@
+# Ingress PRINCIPAL — recibe TODO el tráfico y lo enruta a la API.
+# Requiere el controller ingress-nginx instalado:
+#   helm upgrade --install ingress-nginx ingress-nginx \
+#     --repo https://kubernetes.github.io/ingress-nginx \
+#     --namespace ingress-nginx --create-namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sipscan-api
+  namespace: sipscan
+  annotations:
+    # Timeouts largos para mantener vivas las conexiones WebSocket (/receipts/ws)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    # Sin host: regla catch-all. El tráfico entra por la IP externa del Service
+    # del controller ingress-nginx (kubectl get svc -n ingress-nginx).
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sipscan-api
+                port:
+                  number: 80
